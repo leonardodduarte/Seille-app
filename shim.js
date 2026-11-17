@@ -124,7 +124,7 @@
     const el = document.getElementById("login");
     el.hidden = false;
     el.innerHTML = `<form class="modal" id="lf" style="max-width:380px">
-      <div class="brand"><b>Seille</b><span>Gestão do ateliê</span></div>
+      <img src="icons/icon-192.png?v=2" alt="Seille" class="llogo">
       ${configurado ? `<p class="sub" style="margin:0">Entre com o e-mail e a senha cadastrados.</p>
       <div class="f"><label for="le">E-mail</label><input id="le" type="email" autocomplete="username" required></div>
       <div class="f"><label for="ls">Senha</label><input id="ls" type="password" autocomplete="current-password" required></div>
