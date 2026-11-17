@@ -106,7 +106,7 @@
     async chamar(acao, extra = {}) {
       if (!sb) throw { code: "unavailable" };
       const { data, error } = await sb.functions.invoke("nuvemshop", { body: { acao, ...extra } });
-      if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw { code: j.code || (error.context?.status === 404 ? "sem_funcao" : "unavailable"), message: j.message || String(error.message || error) }; }
+      if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw { code: j.code || (error.context?.status === 404 ? "sem_funcao" : "unavailable"), motivo: j.motivo, status: error.context?.status, message: j.message || String(error.message || error) }; }
       return data;
     },
   };

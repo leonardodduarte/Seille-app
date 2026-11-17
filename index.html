@@ -20,7 +20,7 @@ img{max-width:100%}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=4"></script>
+<script src="shim.js?v=5"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -992,7 +992,7 @@ S.nuvem = null; let nuvemCarregando = false;
 async function carregaNuvem(){
   if(nuvemCarregando || !window.seilleNuvem) return; nuvemCarregando = true;
   try{ S.nuvem = await window.seilleNuvem.chamar("status"); }
-  catch(e){ S.nuvem = {erro: e?.code === "sem_funcao" ? "A função nuvemshop ainda não foi publicada no Supabase." : e?.code === "not_granted" ? "Sua conta não tem acesso." : "Não foi possível consultar a ligação com a Nuvemshop."}; }
+  catch(e){ S.nuvem = {erro: e?.code === "sem_funcao" ? "A função nuvemshop ainda não foi publicada no Supabase." : e?.code === "not_granted" ? ({nao_membro:"Seu e-mail não está na lista de membros (tabela membros no Supabase).", login_invalido:"A função não conseguiu confirmar seu login. Publique de novo a versão mais recente da função nuvemshop.", erro_membros:"A função não conseguiu ler a lista de membros. Publique de novo a versão mais recente da função nuvemshop."}[e.motivo] || "Sua conta não tem acesso.") : `Não foi possível consultar a ligação com a Nuvemshop${e?.status ? " (erro " + e.status + ")" : ""}.`}; }
   nuvemCarregando = false; if(curView() === "ajustes") render();
 }
 function painelNuvem(){

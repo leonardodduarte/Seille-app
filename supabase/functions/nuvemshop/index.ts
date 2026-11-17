@@ -20,7 +20,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 // Chave de servidor: formato antigo (service_role) ou novo (SUPABASE_SECRET_KEYS, um JSON com as chaves secretas)
 const chaveDoJson = (nome: string) => { try { const o = JSON.parse(Deno.env.get(nome) ?? "{}"); return String(o.default ?? Object.values(o)[0] ?? ""); } catch { return ""; } };
-const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || chaveDoJson("SUPABASE_SECRET_KEYS");
+const SB_KEY = chaveDoJson("SUPABASE_SECRET_KEYS") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const admin = createClient(SB_URL, SB_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 const CLIENT_ID = (Deno.env.get("NUVEMSHOP_CLIENT_ID") ?? "").trim();
@@ -202,13 +202,14 @@ async function assinaturaValida(corpo: string, recebida: string) {
 }
 
 // ---------- membros do app ----------
-async function membro(req: Request) {
+async function membro(req: Request): Promise<string> {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!jwt) return false;
-  const { data: { user } } = await admin.auth.getUser(jwt);
-  if (!user?.email) return false;
-  const { data } = await admin.from("membros").select("email").ilike("email", user.email).maybeSingle();
-  return !!data;
+  if (!jwt) return "sem_login";
+  const { data: { user }, error } = await admin.auth.getUser(jwt);
+  if (!user?.email) { console.error("getUser", error); return "login_invalido"; }
+  const { data, error: e2 } = await admin.from("membros").select("email").ilike("email", user.email).maybeSingle();
+  if (e2) { console.error("membros", e2); return "erro_membros"; }
+  return data ? "" : "nao_membro";
 }
 
 Deno.serve(async (req) => {
@@ -258,7 +259,8 @@ Deno.serve(async (req) => {
 
   // 3) Chamadas do app (só membros)
   if (req.method !== "POST") return json({ code: "invalid_argument" }, 405);
-  if (!(await membro(req))) return json({ code: "not_granted" }, 403);
+  const motivo = await membro(req);
+  if (motivo) return json({ code: "not_granted", motivo }, 403);
   let b: any = {}; try { b = await req.json(); } catch { /* vazio */ }
   const d = await ler();
   const configurado = !!(CLIENT_ID && CLIENT_SECRET);
