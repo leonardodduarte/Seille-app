@@ -122,6 +122,18 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.ufs{display:flex;flex-direction:column;gap:4px}
+.uf{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:10px 8px;border-radius:14px;cursor:pointer}
+.uf:hover,.uf.on{background:var(--raised)}
+.ufpos{font-family:var(--f-display);font-size:20px;font-weight:700;color:var(--muted);text-align:center;line-height:1.2}
+.ufb{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ufl{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums}
+.ufl b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ufl>span{white-space:nowrap;font-weight:600}
+.uf .meter{height:8px}
+.cids{display:flex;flex-direction:column;margin-top:6px;border-top:1px solid var(--line)}
+.cids>div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+.cids>div span:last-child{color:var(--ink2);white-space:nowrap}
 .kclick:hover{border-color:#BDBDBD}
 .modal.largo{max-width:960px}
 .filtros input{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px}
@@ -722,6 +734,34 @@ function chartLucro(){
 }
 function niceStep(raw){ if(raw<=0) return 1000; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw/p; return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p; }
 
+// Onde mais vendemos: ranking de estados (e cidades) no mês ou no ano
+const UF_NOME = {AC:"Acre",AL:"Alagoas",AP:"Amapá",AM:"Amazonas",BA:"Bahia",CE:"Ceará",DF:"Distrito Federal",ES:"Espírito Santo",GO:"Goiás",MA:"Maranhão",MT:"Mato Grosso",MS:"Mato Grosso do Sul",MG:"Minas Gerais",PA:"Pará",PB:"Paraíba",PR:"Paraná",PE:"Pernambuco",PI:"Piauí",RJ:"Rio de Janeiro",RN:"Rio Grande do Norte",RS:"Rio Grande do Sul",RO:"Rondônia",RR:"Roraima",SC:"Santa Catarina",SP:"São Paulo",SE:"Sergipe",TO:"Tocantins"};
+let REGP = "mes", REGUF = "";
+function painelEstados(){
+  const ano = MES.slice(0,4), noPeriodo = v => REGP === "ano" ? (v.data||"").startsWith(ano) : (v.data||"").slice(0,7) === MES;
+  const gs = agrupaPedidos(S.vendas.filter(noPeriodo)).filter(g => !g.cancelado);
+  const tot = gs.reduce((a,g)=>a+g.total,0);
+  const m = {};
+  gs.forEach(g => { const uf = g.f.estado || ""; const o = (m[uf] ||= {n:0, receita:0, cidades:{}}); o.n++; o.receita += g.total;
+    const c = g.f.cidade || "Cidade não informada"; const oc = (o.cidades[c] ||= {n:0, receita:0}); oc.n++; oc.receita += g.total; });
+  const lista = Object.entries(m).sort((a,b) => b[1].receita - a[1].receita);
+  const max = lista.length ? lista[0][1].receita : 0;
+  const seg = [["mes", ymLabel(MES)], ["ano", "Ano de " + ano]].map(([k,l]) => `<button class="${REGP===k?"on":""}" data-regp="${k}">${l}</button>`).join("");
+  const linhas = lista.map(([uf,o], i) => {
+    const aberto = REGUF === uf, cid = Object.entries(o.cidades).sort((a,b)=>b[1].receita-a[1].receita);
+    return `<div class="uf${aberto?" on":""}" data-reguf="${esc(uf)}" role="button" tabindex="0">
+      <span class="ufpos">${i+1}</span>
+      <div class="ufb"><div class="ufl"><b>${esc(uf ? uf + " · " + (UF_NOME[uf]||uf) : "Estado não informado")}</b><span>${brl(o.receita)} <span class="sub">· ${pct(tot ? o.receita/tot : 0, 0)}</span></span></div>
+        <div class="meter"><i style="width:${max ? o.receita/max*100 : 0}%"></i></div>
+        <div class="sub">${o.n} ${o.n===1?"pedido":"pedidos"} · ticket médio ${brl(o.receita/o.n)} · ${cid.length} ${cid.length===1?"cidade":"cidades"}</div>
+        ${aberto ? `<div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
+      </div></div>`; }).join("");
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos</h3><div class="seg">${seg}</div></div>
+    ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div>`
+      : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
+  </div>`;
+}
 function vPainel(){
   const c = calcMes(MES), prev = calcMes(addYm(MES,-1));
   const meta = num(S.config.metaFaturamento);
@@ -748,6 +788,7 @@ function vPainel(){
     <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?"Atingido neste mês":"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
+  ${painelEstados()}
   <div class="grid2">
     <div class="panel"><h3>Demonstrativo do mês</h3>
       <table class="dre"><tbody>
@@ -1551,6 +1592,8 @@ document.addEventListener("click", e => {
   if(e.target.closest("select.st, select.flt, a")) return;
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
+  const rp = e.target.closest("[data-regp]"); if(rp){ REGP = rp.dataset.regp; REGUF = ""; render(); return; }
+  const ru = e.target.closest("[data-reguf]"); if(ru){ REGUF = REGUF === ru.dataset.reguf ? "" : ru.dataset.reguf; render(); return; }
   const r = e.target.closest("[data-edit]");
   if(r){ const col = r.dataset.edit; const d = S[col].find(x => x.id === r.dataset.id); if(d) openForm(col, d); }
 });
