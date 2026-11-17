@@ -1,0 +1,1228 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Seille Gestão</title>
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1D26" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Seille">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="shim.js"></script>
+</head>
+<body>
+<div class="ov" id="login" hidden></div>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: ateliê ledger — nav de abas no topo, conteúdo em colunas que viram uma só no celular */
+:root{
+  --bg:#F3F4F7; --surface:#FFFFFF; --sunken:#ECEEF3; --ink:#1A1C25; --ink2:#474B5C; --muted:#777B8E; --line:#DFE1E8;
+  --accent:#33459E; --accent-ink:#FFFFFF; --accent-soft:#E5E8F6;
+  --good:#1D7448; --good-soft:#E1F1E8; --warn:#9A6200; --warn-soft:#F7EDD9; --bad:#AD3434; --bad-soft:#F7E3E3;
+  --neg:#BF5A3C;
+  --f-display:"Bricolage Grotesque", "Inter", system-ui, sans-serif;
+  --f-body:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111319; --surface:#1A1D26; --sunken:#151820; --ink:#ECEDF3; --ink2:#B5B8C9; --muted:#878BA0; --line:#2B2F3C;
+  --accent:#8E9CF0; --accent-ink:#111319; --accent-soft:#252B4B;
+  --good:#5DC48E; --good-soft:#18352A; --warn:#E3AA45; --warn-soft:#3A2E16; --bad:#EF7D7D; --bad-soft:#3D1F22;
+  --neg:#E58C6E; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#111319; --surface:#1A1D26; --sunken:#151820; --ink:#ECEDF3; --ink2:#B5B8C9; --muted:#878BA0; --line:#2B2F3C;
+  --accent:#8E9CF0; --accent-ink:#111319; --accent-soft:#252B4B;
+  --good:#5DC48E; --good-soft:#18352A; --warn:#E3AA45; --warn-soft:#3A2E16; --bad:#EF7D7D; --bad-soft:#3D1F22;
+  --neg:#E58C6E; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.num,td.n,.kpi .v{font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;font-weight:700}
+h2{font-size:20px;letter-spacing:-.01em}
+h3{font-size:15px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:12px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand b{font-family:var(--f-display);font-size:24px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+.brand span{color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.month{display:flex;align-items:center;gap:4px}
+.month input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px;min-width:0}
+.ib{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:34px;height:34px;cursor:pointer;display:grid;place-items:center}
+.ib:hover{background:var(--sunken)}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.tabs a{padding:10px 14px;color:var(--ink2);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;font-weight:500}
+nav.tabs a:hover{color:var(--ink)}
+nav.tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
+
+main{padding-block:24px 64px}
+section.view{display:flex;flex-direction:column;gap:20px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.head p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--sunken)}
+a.btn{color:var(--ink);text-decoration:none;display:inline-flex;align-items:center}
+a.btn.pri{color:var(--accent-ink)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.danger.arm{background:var(--bad);color:var(--surface)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.panel > h3{margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--f-display);font-size:26px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .s{font-size:12px;color:var(--ink2)}
+.kpi .v.pos{color:var(--good)} .kpi .v.negv{color:var(--bad)}
+.meter{height:6px;background:var(--sunken);border-radius:3px;overflow:hidden;margin-top:4px}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:3px}
+
+/* tables */
+.tw{overflow-x:auto;margin:0 -2px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover td{background:var(--sunken)}
+.sub{color:var(--muted);font-size:12px}
+tfoot td{font-weight:600;border-top:1px solid var(--line);border-bottom:0}
+
+/* DRE */
+.dre td{padding:7px 4px}
+.dre tr.tot td{font-weight:700;border-top:1px solid var(--ink2)}
+.dre tr.minus td:first-child{color:var(--ink2);padding-left:14px}
+.dre tr.big td{font-family:var(--f-display);font-size:17px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--sunken);color:var(--ink2);white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.tag{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn);border:1px solid currentColor;border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
+select.st{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 6px;font-size:12px}
+
+.empty{padding:28px 12px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-family:var(--f-display);font-size:16px;margin-bottom:4px}
+.note{font-size:13px;color:var(--ink2);background:var(--sunken);border-radius:8px;padding:10px 12px}
+.banner{border-radius:8px;padding:10px 14px;font-size:13px}
+.banner.warn{background:var(--warn-soft);color:var(--warn)}
+.banner.info{background:var(--accent-soft);color:var(--accent)}
+
+/* chart */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{fill:var(--muted);font-size:11px;font-family:var(--f-body)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;min-width:170px;transform:translate(-50%,-100%);font-variant-numeric:tabular-nums;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.tip b{display:block;margin-bottom:2px}
+.tip span{display:flex;justify-content:space-between;gap:12px}
+
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(15,17,25,.45);z-index:20;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:calc(24px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 24px max(12px,env(safe-area-inset-left,0px))}
+.modal{background:var(--surface);border-radius:12px;width:100%;max-width:620px;padding:22px;display:flex;flex-direction:column;gap:16px;border:1px solid var(--line)}
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+@media (max-width:520px){.fgrid{grid-template-columns:minmax(0,1fr)}}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f.wide{grid-column:1/-1}
+.f label{font-size:12px;font-weight:600;color:var(--ink2)}
+.f input,.f select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.f input[type=checkbox]{width:auto}
+.f .h{font-size:11px;color:var(--muted)}
+.files{display:flex;flex-direction:column;gap:6px;background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:10px}
+.att{display:flex;align-items:center;gap:8px;font-size:13px}
+.att a,.doclink{color:var(--accent);text-decoration:none;word-break:break-all}
+.att a:hover,.doclink:hover{text-decoration:underline}
+.files input[type=file]{font-size:13px;max-width:100%}
+.doclink{font-size:12px;display:inline-block;margin-right:8px}
+tr.grp td{background:var(--sunken);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:6px 10px}
+.lnk{background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:12px;font-weight:600}
+.lnk:hover{text-decoration:underline}
+select.flt{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px;max-width:100%}
+.drop{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;border:2px dashed var(--line);border-radius:var(--r);padding:28px 16px;background:var(--surface);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop b{font-family:var(--f-display);font-size:18px}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.fila{display:flex;flex-direction:column;gap:14px}
+.fitem{display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+@media (max-width:600px){.fitem{grid-template-columns:minmax(0,1fr)}}
+.prev{width:100%;aspect-ratio:3/4;max-width:100%;border-radius:8px;background:var(--sunken);display:grid;place-items:center;overflow:hidden;color:var(--muted);font-weight:700;font-size:13px}
+.prev img{width:100%;height:100%;object-fit:cover}
+@media (max-width:600px){.prev{aspect-ratio:auto;height:90px}}
+.fbody{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ftop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ftop .fn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.ia{font-size:13px;color:var(--ink2);background:var(--sunken);border-radius:8px;padding:8px 10px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;vertical-align:-2px;margin-right:6px}
+@media (prefers-reduced-motion:no-preference){.spin{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.ccard{display:flex;flex-direction:column;gap:6px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;cursor:pointer;min-width:0}
+.ccard:hover{border-color:var(--ink2)}
+.ccard.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cnum{display:flex;justify-content:space-between;gap:8px;font-size:13px;font-variant-numeric:tabular-nums}
+.calc{display:flex;flex-wrap:wrap;gap:8px 18px;background:var(--sunken);border-radius:8px;padding:10px 12px;font-size:13px}
+.calc b{font-variant-numeric:tabular-nums}
+.mact{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.mact .sp{margin-right:auto}
+.err{color:var(--bad);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;z-index:30;font-size:13px}
+.qlist{display:flex;flex-direction:column}
+.qi{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.qi:last-child{border-bottom:0}
+.qi .grow{flex:1;min-width:0}
+.qi .grow div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (prefers-reduced-motion:no-preference){.modal{animation:pop .16s ease-out}@keyframes pop{from{transform:translateY(6px);opacity:.6}}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="bar">
+      <div class="brand"><b>Seille</b><span>Gestão do ateliê</span></div>
+      <div class="month">
+        <button class="ib" id="mprev" aria-label="Mês anterior">‹</button>
+        <input type="month" id="mes" aria-label="Mês de referência">
+        <button class="ib" id="mnext" aria-label="Próximo mês">›</button>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <a href="#painel">Painel</a>
+      <a href="#leitor">Ler comprovantes</a>
+      <a href="#pedidos">Pedidos</a>
+      <a href="#pecas">Peças</a>
+      <a href="#custos">Custos</a>
+      <a href="#funcionarias">Funcionárias</a>
+      <a href="#colecoes">Coleções</a>
+      <a href="#trafego">Tráfego pago</a>
+      <a href="#ajustes">Ajustes</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="panel empty" id="boot"><b>Carregando os dados do ateliê…</b>Pedidos, peças, custos e anúncios aparecem aqui assim que a base responder.</div>
+</main>
+
+<script>
+(() => {
+// ---------- helpers ----------
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const BRL = new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
+const brl = n => BRL.format(+n || 0);
+const brlK = n => Math.abs(n) >= 10000 ? "R$ " + (n/1000).toLocaleString("pt-BR",{maximumFractionDigits:1}) + " mil" : brl(n);
+const pct = (n, d=1) => isFinite(n) ? (n*100).toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d}) + "%" : "—";
+const intf = n => (+n||0).toLocaleString("pt-BR");
+const num = v => { const x = +v; return isFinite(x) ? x : 0; };
+const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const MESESF = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const ymLabel = ym => { const [y,m] = ym.split("-"); return MESESF[+m-1] + " de " + y; };
+const ymShort = ym => { const [y,m] = ym.split("-"); return MESES[+m-1] + "/" + y.slice(2); };
+const addYm = (ym, d) => { let [y,m] = ym.split("-").map(Number); m += d; while(m<1){m+=12;y--} while(m>12){m-=12;y++} return y + "-" + String(m).padStart(2,"0"); };
+const today = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const dBR = s => s ? s.split("-").reverse().join("/") : "";
+const addDays = (s, n) => { const d = new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const daysBetween = (a, b) => Math.round((new Date(b+"T12:00:00") - new Date(a+"T12:00:00"))/86400000);
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
+
+// ---------- domain ----------
+const ORIGENS = ["Meta Ads","Google Ads","TikTok Ads","Pinterest Ads","Influenciadores","Instagram orgânico","Busca orgânica","Indicação","WhatsApp","Direto / outros"];
+const PLATAFORMAS = ["Meta Ads","Google Ads","TikTok Ads","Pinterest Ads","Influenciadores"];
+const STATUS = ["Recebido","Em produção","Pronto","Enviado","Entregue","Cancelado"];
+const STATUS_CLS = {"Recebido":"", "Em produção":"acc", "Pronto":"warn", "Enviado":"good", "Entregue":"good", "Cancelado":"bad"};
+// Plano de contas: grupo → categorias. "Funcionárias" e "Tráfego pago" vêm das próprias abas.
+const GRUPOS = [
+  ["Estrutura do ateliê", ["Aluguel","Condomínio","IPTU","Energia elétrica","Água","Internet e telefone","Seguros"], "fixos"],
+  ["Pessoas", ["Funcionárias","Pró-labore"], "fixos"],
+  ["Produção", ["Manutenção de máquinas","Peça piloto e modelagem","Tecido / estoque","Embalagens em lote","Material de limpeza e escritório"], "variaveis"],
+  ["Administrativo", ["Contador","Plataforma do e-commerce","Softwares e apps","Taxas bancárias","Empréstimos e financiamentos"], "fixos"],
+  ["Marketing", ["Tráfego pago","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
+  ["Outros", ["Outros"], "variaveis"],
+];
+const CAT_AUTO = {"Funcionárias":"funcionarias", "Tráfego pago":"trafego", "Lançamento de coleções":"colecoes"};
+const CATS = GRUPOS.flatMap(g => g[1]).filter(c => !CAT_AUTO[c]);
+const CAT_FIXO = CATS, CAT_VAR = CATS;
+const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000};
+const FUNCOES = ["Costureira","Modelista","Cortadeira","Auxiliar de produção","Passadeira / acabamento","Atendimento e expedição","Outra"];
+const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer"];
+const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
+const POR_PECA = "Produção por peça";
+const FORMAS = ["Pix","Transferência","Dinheiro","Boleto / guia"];
+const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao"];
+const CAT_COL = ["Fotógrafo","Vídeo maker","Modelos","Maquiagem e cabelo","Locação do espaço","Styling e produção de moda","Cenografia e objetos","Transporte","Alimentação","Edição e tratamento de imagens","Peças piloto do lançamento","Divulgação do lançamento","Outros"];
+const STATUS_COL = ["Planejamento","Em produção","Lançada","Encerrada"];
+const STATUS_COL_CLS = {"Planejamento":"", "Em produção":"acc", "Lançada":"good", "Encerrada":""};
+let COLSEL = "";
+const NLOAD = COLS.length + 1;
+
+const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
+let PAGF = "";
+let MES = today().slice(0,7);
+
+const custoPeca = p => num(p.tecidoMetros)*num(p.tecidoPrecoMetro) + num(p.aviamentos) + num(p.costura) + num(p.embalagem) + num(p.outros);
+const taxaPct = () => (num(S.config.taxaGateway) + num(S.config.imposto))/100;
+function pecaCalc(p){
+  const c = custoPeca(p), pr = num(p.preco), tx = pr*taxaPct();
+  const mc = pr - c - tx;
+  const alvo = num(S.config.margemAlvo)/100;
+  const den = 1 - alvo - taxaPct();
+  return {custo:c, taxas:tx, mc, mcPct: pr ? mc/pr : NaN, markup: c ? pr/c : NaN, sugerido: den > 0 ? c/den : NaN};
+}
+function vendaCalc(v){
+  const receita = num(v.precoUnit)*num(v.qtd) - num(v.desconto) + num(v.freteCobrado);
+  const cpv = num(v.custoUnit)*num(v.qtd);
+  const taxas = receita*taxaPct();
+  return {receita, cpv, taxas, frete:num(v.fretePago), lucro: receita - cpv - taxas - num(v.fretePago)};
+}
+const ativa = v => v.status !== "Cancelado";
+const fixoNoMes = (f, ym) => (!f.inicio || f.inicio <= ym) && (!f.fim || f.fim >= ym);
+
+function calcMes(ym){
+  const vs = S.vendas.filter(v => (v.data||"").slice(0,7) === ym && ativa(v));
+  let receita=0,cpv=0,taxas=0,frete=0,descontos=0,bruto=0,pecas=0;
+  const pedidos = new Set();
+  for(const v of vs){ const c = vendaCalc(v); receita+=c.receita; cpv+=c.cpv; taxas+=c.taxas; frete+=c.frete; descontos+=num(v.desconto); bruto+=num(v.precoUnit)*num(v.qtd)+num(v.freteCobrado); pecas+=num(v.qtd); pedidos.add(v.pedido || v.id); }
+  const mc = receita - cpv - taxas - frete;
+  const ads = S.trafego.filter(t => (t.data||"").slice(0,7) === ym).reduce((a,t)=>a+num(t.investimento),0);
+  const avulsos = S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
+  const fixos = S.fixos.filter(f => fixoNoMes(f, ym)).reduce((a,f)=>a+num(f.valor),0);
+  const pags = S.pagamentos.filter(p => pagYm(p) === ym);
+  const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
+  const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
+  const colecao = S.custosColecao.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
+  const lucro = mc - ads - avulsos - fixos - equipe - colecao;
+  const nPed = pedidos.size;
+  const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
+  const mcPct = receita ? mc/receita : NaN;
+  return {ym, vs, receita, bruto, descontos, cpv, taxas, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
+    nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN,
+    equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
+}
+const pagYm = p => p.competencia || (p.data||"").slice(0,7);
+// Soma por categoria no mês (fixos vigentes + variáveis + abas automáticas)
+function custosPorCategoria(ym, c){
+  const m = {};
+  const add = (k, v) => { k = k || "Outros"; m[k] = (m[k]||0) + num(v); };
+  S.fixos.filter(f => fixoNoMes(f, ym)).forEach(f => add(f.categoria, f.valor));
+  S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).forEach(x => add(x.categoria, x.valor));
+  m["Funcionárias"] = c.equipe; m["Tráfego pago"] = c.ads; m["Lançamento de coleções"] = c.colecao;
+  return m;
+}
+
+// ---------- forms ----------
+const money = (key,label,extra={}) => ({key,label,type:"number",step:"0.01",min:"0",...extra});
+const SCHEMAS = {
+  produtos: {title:"Peça", fields:[
+    {key:"nome",label:"Nome da peça",type:"text",req:true,wide:true},
+    {key:"colecao",label:"Coleção",type:"select",opts:()=>[["","Sem coleção"],...S.colecoes.map(c=>[c.nome,c.nome])]},
+    money("preco","Preço de venda (R$)",{req:true}),
+    {key:"tecidoMetros",label:"Tecido por peça (metros)",type:"number",step:"0.01",min:"0"},
+    money("tecidoPrecoMetro","Preço do tecido por metro (R$)"),
+    money("aviamentos","Aviamentos (R$)",{h:"Botões, zíper, linha, entretela"}),
+    money("costura","Costura por peça (R$)",{h:"Se a costureira é assalariada, deixe 0: o salário entra em Funcionárias"}),
+    money("embalagem","Embalagem e tag (R$)"),
+    money("outros","Outros custos por peça (R$)",{h:"Etiqueta, lavanderia, acabamento"}),
+    {key:"prazoDias",label:"Prazo de produção (dias)",type:"number",step:"1",min:"0"},
+    {key:"ativo",label:"Peça ativa no site",type:"checkbox",def:true},
+  ], defaults:{prazoDias:10,ativo:true}},
+  vendas: {title:"Pedido", fields:[
+    {key:"data",label:"Data do pedido",type:"date",req:true},
+    {key:"pedido",label:"Nº do pedido",type:"text"},
+    {key:"cliente",label:"Cliente",type:"text"},
+    {key:"produtoId",label:"Peça",type:"select",opts:()=>[["","Escolha a peça"],...S.produtos.slice().sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")).map(p=>[p.id,p.nome])],req:true},
+    {key:"tamanho",label:"Tamanho",type:"text"},
+    {key:"qtd",label:"Quantidade",type:"number",step:"1",min:"1",req:true},
+    money("precoUnit","Preço unitário (R$)"),
+    money("desconto","Desconto total (R$)",{h:"Cupom ou desconto aplicado no pedido"}),
+    money("freteCobrado","Frete cobrado da cliente (R$)"),
+    money("fretePago","Frete pago (R$)",{h:"Correios ou transportadora"}),
+    money("custoUnit","Custo unitário da peça (R$)",{h:"Vem da ficha técnica; ajuste se mudou"}),
+    {key:"origem",label:"Origem da venda",type:"select",opts:()=>ORIGENS.map(o=>[o,o])},
+    {key:"status",label:"Status",type:"select",opts:()=>STATUS.map(o=>[o,o])},
+  ], defaults:()=>({data:today(),qtd:1,status:"Recebido",origem:"Meta Ads",desconto:0,freteCobrado:0,fretePago:0})},
+  fixos: {title:"Custo fixo", fields:[
+    {key:"nome",label:"Descrição",type:"text",req:true,wide:true},
+    {key:"categoria",label:"Categoria",type:"select",opts:()=>CAT_FIXO.map(o=>[o,o])},
+    money("valor","Valor mensal (R$)",{req:true}),
+    {key:"inicio",label:"Vale a partir de",type:"month",h:"Deixe vazio se sempre existiu"},
+    {key:"fim",label:"Vale até",type:"month",h:"Preencha quando o custo acabar"},
+  ], defaults:()=>({categoria:CAT_FIXO[0],inicio:MES})},
+  variaveis: {title:"Custo do mês", fields:[
+    {key:"data",label:"Data",type:"date",req:true},
+    {key:"categoria",label:"Categoria",type:"select",opts:()=>CAT_VAR.map(o=>[o,o])},
+    {key:"descricao",label:"Descrição",type:"text",req:true,wide:true},
+    money("valor","Valor (R$)",{req:true}),
+    {key:"anexos",label:"Comprovantes",type:"files",wide:true},
+  ], defaults:()=>({data:MES===today().slice(0,7)?today():MES+"-01",categoria:"Manutenção de máquinas"})},
+  funcionarias: {title:"Funcionária", fields:[
+    {key:"nome",label:"Nome",type:"text",req:true,wide:true},
+    {key:"funcao",label:"Função",type:"select",opts:()=>FUNCOES.map(o=>[o,o])},
+    {key:"vinculo",label:"Vínculo",type:"select",opts:()=>VINCULOS.map(o=>[o,o])},
+    money("salario","Salário ou valor combinado (R$)",{h:"Por mês. Para quem recebe por peça, deixe 0"}),
+    {key:"admissao",label:"Início",type:"date"},
+    {key:"pix",label:"Chave Pix",type:"text"},
+    {key:"telefone",label:"Telefone",type:"text"},
+    {key:"ativa",label:"Trabalha com a Seille atualmente",type:"checkbox",def:true,wide:true},
+  ], defaults:()=>({funcao:"Costureira",vinculo:"CLT",ativa:true,admissao:today()})},
+  colecoes: {title:"Coleção", fields:[
+    {key:"nome",label:"Nome da coleção",type:"text",req:true,wide:true},
+    {key:"status",label:"Status",type:"select",opts:()=>STATUS_COL.map(o=>[o,o])},
+    {key:"lancamento",label:"Data de lançamento",type:"date"},
+    money("orcamento","Orçamento do lançamento (R$)",{h:"Quanto vocês planejam gastar com fotos, modelos, locação etc."}),
+    money("metaFaturamento","Meta de faturamento da coleção (R$)"),
+    {key:"obs",label:"Observações",type:"text",wide:true},
+  ], defaults:()=>({status:"Planejamento"})},
+  custosColecao: {title:"Custo da coleção", fields:[
+    {key:"colecaoId",label:"Coleção",type:"select",req:true,opts:()=>[["","Escolha"],...S.colecoes.map(c=>[c.id,c.nome])]},
+    {key:"categoria",label:"Categoria",type:"select",opts:()=>CAT_COL.map(o=>[o,o])},
+    {key:"fornecedor",label:"Profissional ou fornecedor",type:"text"},
+    {key:"data",label:"Data do pagamento",type:"date",req:true},
+    {key:"descricao",label:"Descrição",type:"text",wide:true},
+    money("valor","Valor (R$)",{req:true}),
+    {key:"pago",label:"Já foi pago",type:"checkbox",def:true},
+    {key:"anexos",label:"Comprovantes e orçamentos",type:"files",wide:true},
+  ], defaults:()=>({colecaoId:COLSEL||"",categoria:"Fotógrafo",data:today(),pago:true})},
+  pagamentos: {title:"Pagamento", fields:[
+    {key:"funcionariaId",label:"Funcionária",type:"select",req:true,opts:()=>[["","Escolha"],...S.funcionarias.slice().sort((a,b)=>(b.ativa?1:0)-(a.ativa?1:0)||(a.nome||"").localeCompare(b.nome||"")).map(f=>[f.id,f.nome+(f.ativa?"":" (inativa)")])]},
+    {key:"tipo",label:"Tipo de pagamento",type:"select",opts:()=>TIPOS_PAG.map(o=>[o,o])},
+    {key:"data",label:"Data do pagamento",type:"date",req:true},
+    {key:"competencia",label:"Mês de referência",type:"month",h:"Mês de trabalho a que o pagamento se refere"},
+    money("valor","Valor pago (R$)",{req:true}),
+    {key:"forma",label:"Forma de pagamento",type:"select",opts:()=>FORMAS.map(o=>[o,o])},
+    {key:"obs",label:"Observação",type:"text",wide:true},
+    {key:"anexos",label:"Comprovantes",type:"files",wide:true},
+  ], defaults:()=>({data:MES===today().slice(0,7)?today():MES+"-05",competencia:MES,tipo:"Salário",forma:"Pix",funcionariaId:PAGF||""})},
+  trafego: {title:"Investimento em anúncio", fields:[
+    {key:"data",label:"Data (ou início do período)",type:"date",req:true},
+    {key:"plataforma",label:"Plataforma",type:"select",opts:()=>PLATAFORMAS.map(o=>[o,o])},
+    {key:"campanha",label:"Campanha",type:"text",wide:true},
+    money("investimento","Valor investido (R$)",{req:true}),
+    {key:"impressoes",label:"Impressões",type:"number",step:"1",min:"0"},
+    {key:"cliques",label:"Cliques no link",type:"number",step:"1",min:"0"},
+  ], defaults:()=>({data:MES===today().slice(0,7)?today():MES+"-01",plataforma:"Meta Ads"})},
+};
+
+let modalEl = null;
+function closeModal(){ if(modalEl){ modalEl.remove(); modalEl=null; } }
+function openForm(col, doc, preset){
+  closeModal();
+  const sc = SCHEMAS[col];
+  const base = doc ? {...doc} : {...(typeof sc.defaults === "function" ? sc.defaults() : (sc.defaults||{})), ...(preset||{})};
+  modalEl = document.createElement("div");
+  modalEl.className = "ov";
+  const fieldsHtml = sc.fields.map(f => {
+    const id = "f_" + f.key, v = base[f.key];
+    let inp;
+    if(f.type === "select") inp = `<select id="${id}" name="${f.key}">${f.opts().map(([k,l])=>`<option value="${esc(k)}"${String(v??"")===String(k)?" selected":""}>${esc(l)}</option>`).join("")}</select>`;
+    else if(f.type === "files") inp = `<div class="files" id="${id}">${(v||[]).map((a,i)=>`<label class="att"><input type="checkbox" data-keep="${i}" checked> <a href="#" data-blob="${esc(a.id)}">${esc(a.nome||"arquivo")}</a></label>`).join("")}${(v||[]).length?`<span class="h">Desmarque para remover um comprovante.</span>`:""}${S.assets?`<input type="file" name="novosAnexos" multiple accept="image/*,application/pdf"><span class="h">Fotos ou PDF do comprovante (até 20 MB cada)</span>`:`<span class="h">Para anexar comprovantes é preciso estar conectado.</span>`}</div>`;
+    else if(f.type === "checkbox") inp = `<input type="checkbox" id="${id}" name="${f.key}"${(v ?? f.def) ? " checked":""}>`;
+    else inp = `<input id="${id}" name="${f.key}" type="${f.type}"${f.step?` step="${f.step}"`:""}${f.min?` min="${f.min}"`:""}${f.req?" required":""} value="${esc(v ?? "")}"${f.type==="number"?' inputmode="decimal"':""}>`;
+    return `<div class="f${f.wide?" wide":""}"><label for="${id}">${esc(f.label)}</label>${inp}${f.h?`<span class="h">${esc(f.h)}</span>`:""}</div>`;
+  }).join("");
+  modalEl.innerHTML = `<form class="modal" novalidate>
+    <h2>${doc ? "Editar" : "Novo"}: ${esc(sc.title.toLowerCase())}</h2>
+    <div class="fgrid">${fieldsHtml}</div>
+    <div class="calc" id="calc" hidden></div>
+    <div class="err" id="ferr" hidden></div>
+    <div class="mact">
+      ${doc ? `<button type="button" class="btn danger sp" id="fdel">Excluir</button>` : ""}
+      <button type="button" class="btn" id="fcancel">Cancelar</button>
+      <button type="submit" class="btn pri">${doc ? "Salvar alterações" : "Adicionar"}</button>
+    </div></form>`;
+  document.body.appendChild(modalEl);
+  const form = $("form", modalEl);
+  const read = () => {
+    const o = {};
+    for(const f of sc.fields){
+      if(f.type === "files") continue;
+      const el = form.elements[f.key];
+      if(f.type === "checkbox") o[f.key] = el.checked;
+      else if(f.type === "number") o[f.key] = el.value === "" ? null : num(el.value);
+      else o[f.key] = el.value;
+    }
+    return o;
+  };
+  const live = () => {
+    const o = read(), box = $("#calc", modalEl);
+    if(col === "produtos"){
+      const c = pecaCalc(o); box.hidden = false;
+      box.innerHTML = `<span>Custo da peça <b>${brl(c.custo)}</b></span><span>Markup <b>${isFinite(c.markup)?c.markup.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</b></span><span>Margem de contribuição <b>${brl(c.mc)} · ${pct(c.mcPct)}</b></span><span>Preço para ${num(S.config.margemAlvo)}% de margem <b>${isFinite(c.sugerido)?brl(c.sugerido):"—"}</b></span>`;
+    } else if(col === "vendas"){
+      const c = vendaCalc(o); box.hidden = false;
+      box.innerHTML = `<span>Receita <b>${brl(c.receita)}</b></span><span>Custo das peças <b>${brl(c.cpv)}</b></span><span>Taxas e impostos <b>${brl(c.taxas)}</b></span><span>Sobra do pedido <b>${brl(c.lucro)}</b></span>`;
+    } else if(col === "trafego"){
+      box.hidden = false;
+      box.innerHTML = `<span>CPC <b>${o.cliques ? brl(num(o.investimento)/o.cliques) : "—"}</b></span><span>CTR <b>${o.impressoes ? pct(num(o.cliques)/o.impressoes,2) : "—"}</b></span>`;
+    }
+  };
+  form.addEventListener("input", live);
+  if(col === "vendas"){
+    form.elements.produtoId.addEventListener("change", e => {
+      const p = S.produtos.find(p => p.id === e.target.value);
+      if(p){ form.elements.precoUnit.value = num(p.preco); form.elements.custoUnit.value = Math.round(custoPeca(p)*100)/100; live(); }
+    });
+  }
+  if(col === "pagamentos"){
+    form.elements.funcionariaId.addEventListener("change", e => {
+      const f = S.funcionarias.find(f => f.id === e.target.value);
+      if(f && !form.elements.valor.value && form.elements.tipo.value === "Salário" && num(f.salario)) form.elements.valor.value = num(f.salario);
+    });
+  }
+  live();
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("mousedown", e => { if(e.target === modalEl) closeModal(); });
+  const del = $("#fdel", modalEl);
+  if(del) del.onclick = async () => {
+    if(col === "colecoes" && S.custosColecao.some(x => x.colecaoId === doc.id)){ const el = $("#ferr", modalEl); el.hidden = false; el.textContent = "Esta coleção tem custos lançados. Exclua os custos antes de excluir a coleção."; return; }
+    if(!del.classList.contains("arm")){ del.classList.add("arm"); del.textContent = "Confirmar exclusão"; return; }
+    del.disabled = true;
+    try{ await S.db.collection(col).doc(doc.id).delete(); closeModal(); toast("Excluído");
+      if(S.assets) for(const a of (doc.anexos||[])) S.assets.delete(a.id).catch(()=>{}); }
+    catch(e){ showErr(e); del.disabled = false; }
+  };
+  const showErr = e => { const el = $("#ferr", modalEl); el.hidden = false; el.textContent = e?.code === "invalid_argument" ? "Sua conta não tem permissão para salvar. Peça para incluir seu e-mail na lista de membros." : "Não foi possível salvar agora. Tente de novo em instantes."; };
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const o = read();
+    const miss = sc.fields.filter(f => f.req && (o[f.key] === "" || o[f.key] === null));
+    if(miss.length){ const el = $("#ferr", modalEl); el.hidden = false; el.textContent = "Preencha: " + miss.map(f=>f.label).join(", ") + "."; return; }
+    if(col === "vendas"){ const p = S.produtos.find(p => p.id === o.produtoId); o.produtoNome = p ? p.nome : (doc?.produtoNome || ""); if(o.precoUnit === null && p) o.precoUnit = num(p.preco); if(o.custoUnit === null && p) o.custoUnit = custoPeca(p); }
+    if(!S.db){ showErr({}); return; }
+    const btn = $("button[type=submit]", form); btn.disabled = true;
+    let removidos = [];
+    if(col === "custosColecao"){ o.colecaoNome = S.colecoes.find(c => c.id === o.colecaoId)?.nome || ""; }
+    if(col === "pagamentos"){
+      const f = S.funcionarias.find(f => f.id === o.funcionariaId); o.funcionariaNome = f ? f.nome : (doc?.funcionariaNome || "");
+      if(!o.competencia) o.competencia = (o.data||"").slice(0,7);
+    }
+    if(sc.fields.some(f => f.type === "files")){
+      const antigos = doc?.anexos || [];
+      const keep = antigos.filter((a,i) => form.querySelector(`[data-keep="${i}"]`)?.checked);
+      removidos = antigos.filter(a => !keep.includes(a));
+      const novos = form.elements.novosAnexos?.files ? [...form.elements.novosAnexos.files] : [];
+      for(const file of novos){
+        btn.textContent = "Enviando " + file.name + "…";
+        try{ const r = await S.assets.upload(file); keep.push({id:r.id, nome:file.name, tipo:r.contentType}); }
+        catch(err){ const el = $("#ferr", modalEl); el.hidden = false; el.textContent = `Não foi possível enviar "${file.name}". Use foto (JPG, PNG) ou PDF de até 20 MB.`; btn.disabled = false; btn.textContent = doc ? "Salvar alterações" : "Adicionar"; return; }
+      }
+      o.anexos = keep;
+    }
+    try{
+      if(doc){ const body = {...doc, ...o}; delete body.id; await S.db.collection(col).doc(doc.id).set(body); }
+      else { o.criadoEm = new Date().toISOString(); await S.db.collection(col).add(o); }
+      closeModal(); toast(doc ? "Alterações salvas" : "Adicionado");
+      if(S.assets) for(const a of removidos) S.assets.delete(a.id).catch(()=>{});
+    }catch(err){ showErr(err); btn.disabled = false; }
+  });
+  setTimeout(() => form.elements[sc.fields[0].key]?.focus(), 30);
+}
+document.addEventListener("keydown", e => { if(e.key === "Escape") closeModal(); });
+
+// ---------- views ----------
+const VIEWS = ["painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","ajustes"];
+const curView = () => { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "painel"; };
+const docLinks = arr => (arr||[]).map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"comprovante")}</a>`).join("");
+const exBadge = d => d.exemplo ? `<span class="tag">exemplo</span>` : "";
+const statusPill = s => `<span class="pill ${STATUS_CLS[s]||""}">${esc(s||"Recebido")}</span>`;
+
+function emptyRow(cols, title, hint){ return `<tr><td colspan="${cols}"><div class="empty"><b>${title}</b>${hint}</div></td></tr>`; }
+
+function chartLucro(){
+  const months = Array.from({length:6},(_,i)=>addYm(MES,i-5)).map(calcMes);
+  const W=640,H=230,pl=56,pr=8,pt=14,pb=28;
+  const vals = months.map(m=>m.lucro);
+  let max = Math.max(0,...vals), min = Math.min(0,...vals);
+  if(max===min){ max = 1000; }
+  const step = niceStep((max-min)/4);
+  max = Math.ceil(max/step)*step; min = Math.floor(min/step)*step;
+  const y = v => pt + (max - v)/(max-min)*(H-pt-pb);
+  const bw = (W-pl-pr)/months.length;
+  let g = "";
+  for(let v=min; v<=max+1e-9; v+=step){
+    g += `<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="${v===0?1.5:1}" ${v===0?'':'stroke-dasharray="2 4"'}/>`;
+    g += `<text x="${pl-8}" y="${y(v)+4}" text-anchor="end">${v===0?"0":(v/1000).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mil"}</text>`;
+  }
+  const bars = months.map((m,i)=>{
+    const x = pl + i*bw + bw*0.22, w = bw*0.56, y0 = y(0), y1 = y(m.lucro), r = Math.min(4, Math.abs(y1-y0));
+    const pos = m.lucro >= 0, cur = m.ym === MES;
+    const fill = pos ? "var(--accent)" : "var(--neg)";
+    const h = Math.abs(y1-y0);
+    const path = h < 0.5 ? "" : pos
+      ? `M${x},${y0} V${y1+r} Q${x},${y1} ${x+r},${y1} H${x+w-r} Q${x+w},${y1} ${x+w},${y1+r} V${y0} Z`
+      : `M${x},${y0} V${y1-r} Q${x},${y1} ${x+r},${y1} H${x+w-r} Q${x+w},${y1} ${x+w},${y1-r} V${y0} Z`;
+    return `<g data-i="${i}"><rect x="${pl+i*bw}" y="${pt}" width="${bw}" height="${H-pt-pb}" fill="transparent"/>${path?`<path d="${path}" fill="${fill}" opacity="${cur?1:.55}"/>`:""}
+      <text x="${x+w/2}" y="${H-8}" text-anchor="middle" style="${cur?"fill:var(--ink);font-weight:600":""}">${ymShort(m.ym)}</text></g>`;
+  }).join("");
+  return {svg:`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Lucro líquido dos últimos 6 meses">${g}${bars}</svg>`, months, W};
+}
+function niceStep(raw){ if(raw<=0) return 1000; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw/p; return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*p; }
+
+function vPainel(){
+  const c = calcMes(MES), prev = calcMes(addYm(MES,-1));
+  const meta = num(S.config.metaFaturamento);
+  const delta = prev.receita ? (c.receita - prev.receita)/prev.receita : NaN;
+  const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
+    .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
+    .sort((a,b)=>a.prazo.localeCompare(b.prazo));
+  const top = {};
+  for(const v of c.vs){ const k = v.produtoNome || "Sem peça"; top[k] = top[k] || {n:0, receita:0, lucro:0}; const vc = vendaCalc(v); top[k].n += num(v.qtd); top[k].receita += vc.receita; top[k].lucro += vc.lucro; }
+  const topArr = Object.entries(top).sort((a,b)=>b[1].receita-a[1].receita).slice(0,5);
+  const ch = chartLucro();
+  const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
+  const dreRow = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
+  return `
+  ${hasEx ? `<div class="banner info">Os registros marcados como <b>exemplo</b> mostram como o app funciona. Quando for lançar os dados reais, apague todos em Ajustes.</div>` : ""}
+  <div class="head"><div><h2>Resultado de ${ymLabel(MES)}</h2><p>Quanto entrou, quanto custou e quanto sobrou para a Seille no mês.</p></div>
+    <button class="btn pri" data-new="vendas">Novo pedido</button></div>
+  <div class="kpis">
+    <div class="kpi"><span class="l">Faturamento</span><span class="v num">${brl(c.receita)}</span>
+      <span class="s">${meta ? pct(c.receita/meta,0)+" da meta de "+brlK(meta) : ""}${isFinite(delta)?` · ${delta>=0?"+":""}${pct(delta,0)} vs. mês anterior`:""}</span>
+      ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
+    <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span></div>
+    <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
+    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span></div>
+    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?"Atingido neste mês":"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>Demonstrativo do mês</h3>
+      <table class="dre"><tbody>
+        ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big")}
+        ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus")}
+        ${dreRow(`Taxas do gateway e impostos (${(num(S.config.taxaGateway)+num(S.config.imposto)).toLocaleString("pt-BR")}%)`, -c.taxas, "minus")}
+        ${dreRow("Frete pago", -c.frete, "minus")}
+        ${dreRow("Margem de contribuição", c.mc, "tot")}
+        ${dreRow("Tráfego pago", -c.ads, "minus")}
+        ${dreRow("Custos variáveis do mês (pilotos, fotos…)", -c.avulsos, "minus")}
+        ${dreRow("Funcionárias (salários, encargos, extras)", -c.equipe, "minus")}
+        ${dreRow("Lançamento de coleções (fotos, modelos…)", -c.colecao, "minus")}
+        ${dreRow("Custos fixos (aluguel, contas, contador…)", -c.fixos, "minus")}
+        ${dreRow("Lucro líquido", c.lucro, "tot big")}
+      </tbody></table>
+    </div>
+    <div class="panel"><h3>Lucro líquido · últimos 6 meses</h3>
+      <div class="chart" id="chart">${ch.svg}<div class="tip" id="tip" hidden></div></div>
+      <p class="sub" style="margin:8px 0 0">Passe o mouse (ou toque) nas barras para ver faturamento e custos do mês.</p>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>Fila de produção</h3>
+      ${fila.length ? `<div class="qlist">${fila.slice(0,8).map(v=>`<div class="qi"><div class="grow"><div><b>${esc(v.produtoNome)}</b> ${v.tamanho?`<span class="sub">· ${esc(v.tamanho)}</span>`:""} ${num(v.qtd)>1?`<span class="sub">× ${num(v.qtd)}</span>`:""}${exBadge(v)}</div><div class="sub">${esc(v.cliente||"")} ${v.pedido?"· #"+esc(v.pedido):""} · prazo ${dBR(v.prazo)}</div></div>
+        ${statusPill(v.status)}<span class="pill ${v.faltam<0?"bad":v.faltam<=2?"warn":""}">${v.faltam<0?Math.abs(v.faltam)+"d atrasado":v.faltam===0?"vence hoje":v.faltam+"d"}</span></div>`).join("")}</div>
+        ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} pedidos na fila. Veja todos em Pedidos.</p>`:""}`
+      : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
+    </div>
+    <div class="panel"><h3>Peças que mais venderam no mês</h3>
+      <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
+      ${topArr.length ? topArr.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
+      </tbody></table></div>
+    </div>
+  </div>`;
+}
+function bindChart(){
+  const box = $("#chart"); if(!box) return;
+  const tip = $("#tip"); const {months, W} = chartLucro();
+  const show = (g) => {
+    const m = months[+g.dataset.i]; const r = g.getBoundingClientRect(), br = box.getBoundingClientRect();
+    tip.hidden = false;
+    tip.innerHTML = `<b>${ymLabel(m.ym)}</b><span>Faturamento <i>${brl(m.receita)}</i></span><span>Custos totais <i>${brl(m.receita-m.lucro)}</i></span><span>Lucro <i>${brl(m.lucro)}</i></span>`;
+    let left = r.left - br.left + r.width/2; left = Math.max(95, Math.min(br.width-95, left));
+    tip.style.left = left + "px"; tip.style.top = "8px";
+  };
+  box.querySelectorAll("g[data-i]").forEach(g => { g.addEventListener("mouseenter", ()=>show(g)); g.addEventListener("click", ()=>show(g)); });
+  box.addEventListener("mouseleave", ()=> tip.hidden = true);
+}
+
+function vPedidos(){
+  const vs = S.vendas.filter(v => (v.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+  let tr=0, tl=0; vs.filter(ativa).forEach(v=>{const c=vendaCalc(v); tr+=c.receita; tl+=c.lucro;});
+  return `<div class="head"><div><h2>Pedidos de ${ymLabel(MES)}</h2><p>Cada linha é uma peça vendida. Mude o status direto na tabela conforme a peça avança na produção.</p></div>
+    <button class="btn pri" data-new="vendas" ${S.produtos.length?"":"disabled title='Cadastre uma peça primeiro'"}>Novo pedido</button></div>
+  ${S.produtos.length?"":`<div class="banner warn">Cadastre pelo menos uma peça na aba Peças antes de lançar pedidos. O custo vem da ficha técnica.</div>`}
+  <div class="panel"><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Pedido</th><th>Peça</th><th>Origem</th><th class="n">Receita</th><th class="n">Custo</th><th class="n">Sobra</th><th>Status</th></tr></thead>
+    <tbody>${vs.length ? vs.map(v=>{const c=vendaCalc(v); return `<tr class="click" data-edit="vendas" data-id="${v.id}">
+      <td>${dBR(v.data)}</td><td>${v.pedido?"#"+esc(v.pedido):""}<div class="sub">${esc(v.cliente||"")}</div></td>
+      <td>${esc(v.produtoNome)}${exBadge(v)}<div class="sub">${[v.tamanho, num(v.qtd)+" un."].filter(Boolean).map(esc).join(" · ")}</div></td>
+      <td>${esc(v.origem||"")}</td><td class="n">${brl(c.receita)}</td><td class="n">${brl(c.cpv+c.taxas+c.frete)}</td><td class="n">${brl(c.lucro)}</td>
+      <td><select class="st" data-status="${v.id}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===v.status?" selected":""}>${s}</option>`).join("")}</select></td></tr>`}).join("")
+      : emptyRow(8,"Nenhum pedido neste mês","Toque em Novo pedido para lançar a primeira venda.")}</tbody>
+    ${vs.length?`<tfoot><tr><td colspan="4">Total (sem cancelados)</td><td class="n">${brl(tr)}</td><td></td><td class="n">${brl(tl)}</td><td></td></tr></tfoot>`:""}
+  </table></div></div>
+  <p class="sub">Sobra = receita − custo da peça − taxas e impostos − frete pago. É a margem de contribuição do pedido, antes de anúncios e custos fixos.</p>`;
+}
+
+function vPecas(){
+  const ps = S.produtos.slice().sort((a,b)=>(b.ativo?1:0)-(a.ativo?1:0) || (a.nome||"").localeCompare(b.nome||""));
+  const alvo = num(S.config.margemAlvo)/100;
+  return `<div class="head"><div><h2>Peças e ficha técnica</h2><p>O custo de cada modelo, do tecido à costura. A margem considera ${(num(S.config.taxaGateway)+num(S.config.imposto)).toLocaleString("pt-BR")}% de taxas e impostos; a meta de margem é ${num(S.config.margemAlvo)}%.</p></div>
+    <button class="btn pri" data-new="produtos">Nova peça</button></div>
+  <div class="panel"><div class="tw"><table>
+    <thead><tr><th>Peça</th><th class="n">Tecido</th><th class="n">Costura</th><th class="n">Custo total</th><th class="n">Preço</th><th class="n">Markup</th><th class="n">Margem</th><th class="n">Preço p/ meta</th></tr></thead>
+    <tbody>${ps.length ? ps.map(p=>{const c=pecaCalc(p); const ok = c.mcPct >= alvo; return `<tr class="click" data-edit="produtos" data-id="${p.id}">
+      <td><b>${esc(p.nome)}</b>${exBadge(p)}<div class="sub">${esc(p.colecao||"")}${p.ativo?"":" · inativa"} · ${num(p.prazoDias)} dias de produção</div></td>
+      <td class="n">${brl(num(p.tecidoMetros)*num(p.tecidoPrecoMetro))}<div class="sub">${num(p.tecidoMetros).toLocaleString("pt-BR")} m</div></td>
+      <td class="n">${brl(p.costura)}</td><td class="n"><b>${brl(c.custo)}</b></td><td class="n">${brl(p.preco)}</td>
+      <td class="n">${isFinite(c.markup)?c.markup.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</td>
+      <td class="n"><span class="pill ${ok?"good":"warn"}">${pct(c.mcPct,0)}</span></td>
+      <td class="n">${isFinite(c.sugerido)?brl(c.sugerido):"—"}</td></tr>`}).join("")
+      : emptyRow(8,"Nenhuma peça cadastrada","Cadastre os modelos com metragem de tecido, aviamentos e o valor da costura.")}</tbody>
+  </table></div></div>
+  <p class="sub">Markup = preço ÷ custo. Margem = (preço − custo − taxas) ÷ preço. Peças em amarelo estão abaixo da meta; a última coluna mostra o preço que atinge a meta.</p>`;
+}
+
+function vCustos(){
+  const c = calcMes(MES), m = custosPorCategoria(MES, c);
+  const known = new Set(GRUPOS.flatMap(g=>g[1]));
+  const extras = Object.keys(m).filter(k => !known.has(k) && m[k]);
+  const total = Object.values(m).reduce((a,b)=>a+b,0);
+  const fx = S.fixos.slice().sort((a,b)=>num(b.valor)-num(a.valor));
+  const vr = S.variaveis.filter(x => (x.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+  const mapa = GRUPOS.map(([g, cats, col]) => {
+    const list = g === "Outros" ? cats.concat(extras) : cats;
+    const gt = list.reduce((a,k)=>a+(m[k]||0),0);
+    return `<tr class="grp"><td>${esc(g)}</td><td class="n">${gt?brl(gt):""}</td><td class="n"></td><td></td></tr>` + list.map(k => {
+      const v = m[k] || 0;
+      const act = CAT_AUTO[k] ? `<a class="lnk" href="#${CAT_AUTO[k]}">Abrir ${esc(k)}</a>` : `<button class="lnk" data-new="${col}" data-cat="${esc(k)}">Lançar</button>`;
+      return `<tr><td>${esc(k)}</td><td class="n">${v ? brl(v) : `<span class="sub">não lançado</span>`}</td><td class="n sub">${v && c.receita ? pct(v/c.receita) : ""}</td><td class="n">${act}</td></tr>`;
+    }).join("");
+  }).join("");
+  return `<div class="head"><div><h2>Custos de ${ymLabel(MES)}</h2><p>O mapa abaixo lista os custos de um negócio como a Seille. O que ainda não foi lançado aparece em cinza. O custo de cada peça vendida, as taxas e o frete entram pelos pedidos.</p></div><a class="btn pri" href="#leitor" style="text-decoration:none">Ler comprovantes</a></div>
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="kpi"><span class="l">Custos operacionais</span><span class="v num">${brl(total)}</span><span class="s">Fixos, variáveis, equipe e anúncios</span></div>
+    <div class="kpi"><span class="l">Fixos no mês</span><span class="v num">${brl(c.fixos)}</span></div>
+    <div class="kpi"><span class="l">Funcionárias</span><span class="v num">${brl(c.equipe)}</span></div>
+    <div class="kpi"><span class="l">Lançamento de coleções</span><span class="v num">${brl(c.colecao)}</span></div>
+    <div class="kpi"><span class="l">Peças vendidas, taxas e frete</span><span class="v num">${brl(c.cpv+c.taxas+c.frete)}</span><span class="s">Calculado pelos pedidos</span></div>
+  </div>
+  <div class="panel"><h3>Mapa de custos do mês</h3><div class="tw"><table>
+    <thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">% do faturamento</th><th></th></tr></thead>
+    <tbody>${mapa}</tbody>
+    <tfoot><tr><td>Total de custos operacionais</td><td class="n">${brl(total)}</td><td class="n">${c.receita?pct(total/c.receita):""}</td><td></td></tr></tfoot>
+  </table></div>
+  <p class="sub" style="margin:10px 0 0">Aluguel, condomínio, contas e contador costumam ser lançados como custo fixo (repete todo mês). IPTU e seguro podem ser lançados como fixo, com o valor da parcela, ou como custo do mês quando forem pagos à vista.</p></div>
+  <div class="grid2">
+    <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos fixos mensais</h3><button class="btn" data-new="fixos">Adicionar</button></div>
+      <div class="tw"><table><thead><tr><th>Descrição</th><th>Vigência</th><th class="n">Valor</th></tr></thead><tbody>
+      ${fx.length ? fx.map(f=>`<tr class="click" data-edit="fixos" data-id="${f.id}" style="${fixoNoMes(f,MES)?"":"opacity:.5"}"><td>${esc(f.nome)}${exBadge(f)}<div class="sub">${esc(f.categoria||"")}</div>${docLinks(f.comprovantes?.[MES])}</td>
+        <td class="sub">${f.inicio?"desde "+ymShort(f.inicio):"sempre"}${f.fim?" até "+ymShort(f.fim):""}</td><td class="n">${brl(f.valor)}</td></tr>`).join("")
+        : emptyRow(3,"Nenhum custo fixo","Inclua aluguel, condomínio, luz, internet, contador e a plataforma do site.")}
+      </tbody>${fx.length?`<tfoot><tr><td colspan="2">Vigentes em ${ymShort(MES)}</td><td class="n">${brl(c.fixos)}</td></tr></tfoot>`:""}</table></div>
+    </div>
+    <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos variáveis do mês</h3><button class="btn" data-new="variaveis">Adicionar</button></div>
+      <div class="tw"><table><thead><tr><th>Data</th><th>Descrição</th><th class="n">Valor</th></tr></thead><tbody>
+      ${vr.length ? vr.map(x=>`<tr class="click" data-edit="variaveis" data-id="${x.id}"><td>${dBR(x.data)}</td><td>${esc(x.descricao)}${exBadge(x)}<div class="sub">${esc(x.categoria||"")}</div>${docLinks(x.anexos)}</td><td class="n">${brl(x.valor)}</td></tr>`).join("")
+        : emptyRow(3,"Nada lançado neste mês","Manutenção de máquinas, peças piloto, fotos e compras avulsas entram aqui.")}
+      </tbody>${vr.length?`<tfoot><tr><td colspan="2">Total</td><td class="n">${brl(c.avulsos)}</td></tr></tfoot>`:""}</table></div>
+    </div>
+  </div>`;
+}
+
+function vFuncionarias(){
+  const c = calcMes(MES), ano = MES.slice(0,4);
+  const fs = S.funcionarias.slice().sort((a,b)=>(b.ativa?1:0)-(a.ativa?1:0) || (a.nome||"").localeCompare(b.nome||""));
+  const folha = fs.filter(f=>f.ativa).reduce((a,f)=>a+num(f.salario),0);
+  const soma = arr => arr.reduce((a,p)=>a+num(p.valor),0);
+  const sel = PAGF ? S.funcionarias.find(f=>f.id===PAGF) : null;
+  if(PAGF && !sel) PAGF = "";
+  const ps = (sel ? S.pagamentos.filter(p=>p.funcionariaId===PAGF) : S.pagamentos.filter(p=>pagYm(p)===MES)).slice().sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+  const semComp = ps.filter(p=>!(p.anexos||[]).length).length;
+  return `<div class="head"><div><h2>Funcionárias</h2><p>Cadastro da equipe e todos os pagamentos feitos a ela, com os comprovantes anexados.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler comprovantes</a><button class="btn" data-new="funcionarias">Nova funcionária</button><button class="btn pri" data-new="pagamentos" ${fs.length?"":"disabled"}>Lançar pagamento</button></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="kpi"><span class="l">Pago em ${MESES[+MES.slice(5)-1]}</span><span class="v num">${brl(c.equipe)}</span><span class="s">Salários, extras e encargos; entra no lucro</span></div>
+    <div class="kpi"><span class="l">Produção por peça</span><span class="v num">${brl(c.porPeca)}</span><span class="s">Já contado no custo das peças</span></div>
+    <div class="kpi"><span class="l">Folha combinada</span><span class="v num">${brl(folha)}</span><span class="s">Soma dos salários de quem está ativa</span></div>
+    <div class="kpi"><span class="l">Equipe ativa</span><span class="v num">${fs.filter(f=>f.ativa).length}</span><span class="s">${fs.length} cadastradas</span></div>
+  </div>
+  <div class="panel"><h3>Equipe</h3><div class="tw"><table>
+    <thead><tr><th>Nome</th><th>Vínculo</th><th>Chave Pix</th><th class="n">Combinado</th><th class="n">Pago em ${ymShort(MES)}</th><th class="n">Pago em ${ano}</th><th></th></tr></thead>
+    <tbody>${fs.length ? fs.map(f=>`<tr class="click" data-edit="funcionarias" data-id="${f.id}" style="${f.ativa?"":"opacity:.55"}">
+      <td><b>${esc(f.nome)}</b>${exBadge(f)}<div class="sub">${esc(f.funcao||"")}${f.ativa?"":" · inativa"}</div></td>
+      <td>${esc(f.vinculo||"")}</td><td class="sub">${esc(f.pix||"")}</td><td class="n">${num(f.salario)?brl(f.salario):"—"}</td>
+      <td class="n">${brl(soma(S.pagamentos.filter(p=>p.funcionariaId===f.id && pagYm(p)===MES)))}</td>
+      <td class="n">${brl(soma(S.pagamentos.filter(p=>p.funcionariaId===f.id && pagYm(p).startsWith(ano))))}</td>
+      <td class="n"><button class="lnk" data-pagf="${f.id}">Ver pagamentos</button></td></tr>`).join("")
+      : emptyRow(7,"Nenhuma funcionária cadastrada","Cadastre costureiras, modelista e quem mais trabalha com a Seille.")}</tbody>
+  </table></div></div>
+  <div class="panel" id="pags"><div class="head" style="margin-bottom:10px"><h3>${sel ? "Todos os pagamentos de " + esc(sel.nome) : "Pagamentos de " + ymLabel(MES)}</h3>
+    <select class="flt" id="pagf" aria-label="Filtrar por funcionária"><option value="">Todas, só ${ymShort(MES)}</option>${fs.map(f=>`<option value="${f.id}"${f.id===PAGF?" selected":""}>${esc(f.nome)}, histórico completo</option>`).join("")}</select></div>
+    ${semComp ? `<div class="banner warn" style="margin-bottom:10px">${semComp} ${semComp>1?"pagamentos estão":"pagamento está"} sem comprovante anexado.</div>` : ""}
+    <div class="tw"><table>
+    <thead><tr><th>Data</th>${sel?"":"<th>Funcionária</th>"}<th>Tipo</th><th>Forma</th><th>Comprovantes</th><th class="n">Valor</th></tr></thead>
+    <tbody>${ps.length ? ps.map(p=>`<tr class="click" data-edit="pagamentos" data-id="${p.id}"><td>${dBR(p.data)}<div class="sub">ref. ${p.competencia?ymShort(p.competencia):""}</div></td>
+      ${sel?"":`<td>${esc(p.funcionariaNome)}${exBadge(p)}</td>`}
+      <td>${esc(p.tipo)}${p.tipo===POR_PECA?`<div class="sub">já no custo da peça</div>`:""}${p.obs?`<div class="sub">${esc(p.obs)}</div>`:""}</td><td>${esc(p.forma||"")}</td>
+      <td>${(p.anexos||[]).length ? p.anexos.map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"arquivo")}</a>`).join("") : `<span class="pill warn">falta comprovante</span>`}</td>
+      <td class="n">${brl(p.valor)}</td></tr>`).join("")
+      : emptyRow(sel?5:6, sel?"Nenhum pagamento para "+esc(sel.nome):"Nenhum pagamento neste mês","Toque em Lançar pagamento e anexe o comprovante do Pix ou da transferência.")}</tbody>
+    ${ps.length?`<tfoot><tr><td colspan="${sel?4:5}">Total</td><td class="n">${brl(soma(ps))}</td></tr></tfoot>`:""}
+  </table></div>
+  <p class="sub" style="margin:10px 0 0">Pagamentos do tipo "Produção por peça" não entram de novo no lucro, porque o valor da costura já está na ficha técnica de cada peça vendida. Se a costureira recebe salário fixo, deixe a costura da ficha técnica em zero.</p></div>`;
+}
+
+function vTrafego(){
+  const ts = S.trafego.filter(t => (t.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+  const c = calcMes(MES);
+  const by = {};
+  for(const t of ts){ const k=t.plataforma||"Outro"; by[k]=by[k]||{inv:0,imp:0,cli:0,ped:new Set(),rec:0}; by[k].inv+=num(t.investimento); by[k].imp+=num(t.impressoes); by[k].cli+=num(t.cliques); }
+  for(const v of c.vs){ if(PLATAFORMAS.includes(v.origem)){ const k=v.origem; by[k]=by[k]||{inv:0,imp:0,cli:0,ped:new Set(),rec:0}; by[k].ped.add(v.pedido||v.id); by[k].rec+=vendaCalc(v).receita; } }
+  const rows = Object.entries(by).sort((a,b)=>b[1].inv-a[1].inv);
+  return `<div class="head"><div><h2>Tráfego pago em ${ymLabel(MES)}</h2><p>Lance o valor investido por plataforma. As vendas são atribuídas pela origem informada em cada pedido.</p></div>
+    <button class="btn pri" data-new="trafego">Lançar investimento</button></div>
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="kpi"><span class="l">Investido</span><span class="v num">${brl(c.ads)}</span><span class="s">${c.receita?pct(c.ads/c.receita)+" do faturamento":""}</span></div>
+    <div class="kpi"><span class="l">ROAS</span><span class="v num">${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Receita vinda de anúncios ÷ investido</span></div>
+    <div class="kpi"><span class="l">CAC geral</span><span class="v num">${isFinite(c.cac)?brl(c.cac):"—"}</span><span class="s">Investido ÷ todos os pedidos</span></div>
+    <div class="kpi"><span class="l">ROAS mínimo</span><span class="v num">${c.mcPct>0?(1/c.mcPct).toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Abaixo disso o anúncio dá prejuízo</span></div>
+  </div>
+  <div class="panel"><h3>Por plataforma</h3><div class="tw"><table>
+    <thead><tr><th>Plataforma</th><th class="n">Investido</th><th class="n">Cliques</th><th class="n">CPC</th><th class="n">CTR</th><th class="n">Pedidos</th><th class="n">Receita</th><th class="n">ROAS</th><th class="n">Custo/pedido</th></tr></thead>
+    <tbody>${rows.length ? rows.map(([k,v])=>{const r = v.inv? v.rec/v.inv : NaN; const min = c.mcPct>0?1/c.mcPct:Infinity; return `<tr><td><b>${esc(k)}</b></td><td class="n">${brl(v.inv)}</td><td class="n">${intf(v.cli)}</td><td class="n">${v.cli?brl(v.inv/v.cli):"—"}</td><td class="n">${v.imp?pct(v.cli/v.imp,2):"—"}</td><td class="n">${v.ped.size}</td><td class="n">${brl(v.rec)}</td><td class="n">${isFinite(r)?`<span class="pill ${r>=min?"good":"bad"}">${r.toLocaleString("pt-BR",{maximumFractionDigits:2})}×</span>`:"—"}</td><td class="n">${v.ped.size?brl(v.inv/v.ped.size):"—"}</td></tr>`}).join("")
+      : emptyRow(9,"Sem investimento lançado","Lance quanto foi gasto no Meta Ads, Google Ads ou com influenciadoras.")}</tbody>
+  </table></div></div>
+  <div class="panel"><h3>Lançamentos</h3><div class="tw"><table>
+    <thead><tr><th>Data</th><th>Plataforma</th><th>Campanha</th><th class="n">Impressões</th><th class="n">Cliques</th><th class="n">Investido</th></tr></thead>
+    <tbody>${ts.length ? ts.map(t=>`<tr class="click" data-edit="trafego" data-id="${t.id}"><td>${dBR(t.data)}</td><td>${esc(t.plataforma)}${exBadge(t)}</td><td>${esc(t.campanha||"")}</td><td class="n">${intf(t.impressoes)}</td><td class="n">${intf(t.cliques)}</td><td class="n">${brl(t.investimento)}</td></tr>`).join("")
+      : emptyRow(6,"Nenhum lançamento neste mês","Pode lançar por dia, por semana ou o total do mês.")}</tbody>
+  </table></div></div>`;
+}
+
+function vAjustes(){
+  const k = S.config;
+  const nEx = COLS.reduce((a,c)=>a+S[c].filter(d=>d.exemplo).length,0);
+  const f = (key,label,h,step="0.01") => `<div class="f"><label for="c_${key}">${label}</label><input id="c_${key}" name="${key}" type="number" step="${step}" min="0" value="${esc(k[key])}" inputmode="decimal"><span class="h">${h}</span></div>`;
+  return `<div class="head"><div><h2>Ajustes</h2><p>Valores usados em todos os cálculos de margem e lucro.</p></div></div>
+  <form class="panel" id="cfg" style="display:flex;flex-direction:column;gap:14px">
+    <div class="fgrid">
+      ${f("taxaGateway","Taxa do gateway / meio de pagamento (%)","Média cobrada por venda no cartão e Pix")}
+      ${f("imposto","Impostos sobre a venda (%)","Ex.: alíquota do Simples Nacional")}
+      ${f("margemAlvo","Meta de margem de contribuição (%)","Usada para sugerir o preço de cada peça","1")}
+      ${f("metaFaturamento","Meta de faturamento mensal (R$)","Aparece como barra de progresso no painel","1")}
+    </div>
+    <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
+  </form>
+  <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Sua conta</h3>
+    <p class="sub" style="margin:0">Conectado como ${esc(window.seilleAuth?.email || "")}.</p>
+    <div><button class="btn" type="button" onclick="window.seilleAuth.sair()">Sair da conta</button></div>
+  </div>
+  <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Exportar</h3>
+    <p class="sub" style="margin:0">Baixe os pedidos de ${ymLabel(MES)} em CSV para abrir no Excel ou Google Planilhas.</p>
+    <div><button class="btn" id="exp">Baixar pedidos do mês (.csv)</button></div>
+  </div>
+  <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Dados de exemplo</h3>
+    <p class="sub" style="margin:0">${nEx ? `Há ${nEx} registros de exemplo. Apague antes de começar a lançar os números reais da Seille.` : "Nenhum registro de exemplo. Tudo o que aparece no app foi lançado por vocês."}</p>
+    ${nEx?`<div><button class="btn danger" id="rmex">Apagar ${nEx} registros de exemplo</button></div>`:""}
+  </div>`;
+}
+
+function bindAjustes(){
+  const form = $("#cfg"); if(!form) return;
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const o = {}; for(const key of Object.keys(CFG_DEF)) o[key] = num(form.elements[key].value);
+    try{ await S.db.doc("config/geral").set(o); toast("Ajustes salvos"); } catch(err){ toast("Não foi possível salvar os ajustes"); }
+  });
+  const rm = $("#rmex");
+  if(rm) rm.onclick = async () => {
+    if(!rm.classList.contains("arm")){ rm.classList.add("arm"); rm.textContent = "Confirmar: apagar exemplos"; return; }
+    rm.disabled = true; rm.textContent = "Apagando…";
+    try{ for(const c of COLS) for(const d of S[c].filter(d=>d.exemplo)){ await S.db.collection(c).doc(d.id).delete(); if(c === "pagamentos" && S.assets) for(const a of (d.anexos||[])) S.assets.delete(a.id).catch(()=>{}); } toast("Exemplos apagados"); }
+    catch(err){ toast("Não foi possível apagar tudo. Tente de novo."); rm.disabled = false; }
+  };
+  $("#exp").onclick = async () => {
+    const vs = S.vendas.filter(v => (v.data||"").slice(0,7) === MES);
+    const hdr = ["Data","Pedido","Cliente","Peça","Tamanho","Qtd","Preço unit.","Desconto","Frete cobrado","Frete pago","Custo unit.","Origem","Status","Receita","Taxas e impostos","Sobra"];
+    const n2 = n => (Math.round(num(n)*100)/100).toString().replace(".",",");
+    const lines = [hdr, ...vs.map(v => { const c = vendaCalc(v); return [dBR(v.data),v.pedido,v.cliente,v.produtoNome,v.tamanho,v.qtd,n2(v.precoUnit),n2(v.desconto),n2(v.freteCobrado),n2(v.fretePago),n2(v.custoUnit),v.origem,v.status,n2(c.receita),n2(c.taxas),n2(c.lucro)]; })];
+    const csv = "﻿" + lines.map(r => r.map(x => `"${String(x??"").replace(/"/g,'""')}"`).join(";")).join("\r\n");
+    const dl = await window.claude?.use?.("downloads");
+    if(!dl){ toast("Download indisponível nesta visualização"); return; }
+    try{ await dl.save({filename:`seille-pedidos-${MES}.csv`, data:new TextEncoder().encode(csv)}); }
+    catch(err){ if(err?.code !== "declined") toast("Não foi possível baixar o arquivo"); }
+  };
+}
+
+// ---------- leitor de comprovantes (IA) ----------
+const PDFJS = "vendor/pdfjs/";
+S.fila = []; let FID = 0;
+const loadScript = src => new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+async function getPdfjs(){
+  if(!window.pdfjsLib){ await loadScript(PDFJS + "pdf.min.js"); await loadScript(PDFJS + "pdf.worker.min.js"); }
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
+  return window.pdfjsLib;
+}
+const canvasBlob = cv => new Promise(r => cv.toBlob(r, "image/jpeg", 0.85));
+async function prepImage(file){
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width*k); cv.height = Math.round(bmp.height*k);
+  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  return canvasBlob(cv);
+}
+async function prepPdf(file){
+  const lib = await getPdfjs();
+  const pdf = await lib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+  let text = "";
+  for(let i = 1; i <= Math.min(pdf.numPages, 3); i++){ const tc = await (await pdf.getPage(i)).getTextContent(); text += tc.items.map(t => t.str).join(" ") + "\n"; }
+  const page = await pdf.getPage(1);
+  const vp0 = page.getViewport({scale:1}); const vp = page.getViewport({scale: Math.min(2.5, 1600 / vp0.width)});
+  const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+  await page.render({canvasContext: ctx, viewport: vp}).promise;
+  const img = await canvasBlob(cv);
+  return {text: text.replace(/\s+/g," ").trim(), img};
+}
+function promptFor(nome, text){
+  const fs = S.funcionarias.map(f => `${f.id}: ${f.nome} (${f.funcao||""}, ${f.vinculo||""}${f.ativa?"":", inativa"})`).join("\n") || "(nenhuma)";
+  const fx = S.fixos.map(f => `${f.id}: ${f.nome} | ${f.categoria||""} | R$ ${num(f.valor).toFixed(2)}/mês`).join("\n") || "(nenhum)";
+  return `Você é o assistente financeiro da Seille, uma confecção slow fashion que vende sob demanda pelo próprio e-commerce. Analise o documento a seguir (comprovante de Pix ou transferência, holerite, recibo, conta de consumo, boleto, fatura de anúncio ou nota) e diga como ele deve ser lançado no controle financeiro.
+Hoje é ${today()}.
+
+Funcionárias cadastradas (id: nome):
+${fs}
+
+Coleções cadastradas (id: nome | status | lançamento):
+${S.colecoes.map(c=>`${c.id}: ${c.nome} | ${c.status||""} | ${c.lancamento||""}`).join("\n") || "(nenhuma)"}
+Categorias de custo de coleção: ${CAT_COL.join("; ")}
+
+Custos fixos cadastrados (id: nome | categoria | valor):
+${fx}
+
+Categorias de custo permitidas: ${CATS.join("; ")}
+Tipos de pagamento a funcionárias: ${TIPOS_PAG.join("; ")}
+Formas de pagamento: ${FORMAS.join("; ")}
+Plataformas de anúncio: ${PLATAFORMAS.join("; ")}
+
+Regras:
+- Holerite, recibo de salário, ou Pix/transferência para uma pessoa da equipe: destino "funcionaria". Use o valor LÍQUIDO efetivamente pago. Case o favorecido com uma funcionária cadastrada pelo nome (ignore acentos, maiúsculas e sobrenomes faltando) e devolva o id; se nenhuma casar, funcionariaId null e informe o nome em "favorecido".
+- Guia de INSS, FGTS, DAE ou eSocial de funcionária: destino "funcionaria", tipoPagamento "INSS / FGTS / encargos".
+- Pagamento a costureira ou facção por peças produzidas: tipoPagamento "Produção por peça".
+- Luz, água, internet, telefone, aluguel, condomínio, IPTU, seguro, contador, plataforma do site, apps, taxas bancárias, manutenção de máquinas e compras: se houver custo fixo cadastrado da mesma categoria ou fornecedor, destino "fixo" com fixoId; senão destino "variavel" com a categoria mais adequada.
+- Pagamentos ligados ao lançamento de uma coleção (fotógrafo, vídeo maker, modelos, maquiagem e cabelo, locação de espaço para ensaio, styling, cenografia, transporte e alimentação da equipe no ensaio, edição de imagens): destino "colecao", com colecaoId (a coleção em planejamento ou produção mais próxima da data, se o documento não disser qual) e categoriaColecao.
+- Faturas ou recibos de Meta, Facebook, Instagram, Google, TikTok ou Pinterest Ads: destino "trafego" com a plataforma.
+- Se não for um documento financeiro: destino "ignorar".
+- Datas no formato AAAA-MM-DD. "data" é a data do pagamento. Se for conta ou boleto sem prova de pagamento, use o vencimento em "data" e pago false.
+- "competencia" é o mês de referência AAAA-MM: mês de consumo da conta, mês trabalhado do holerite, ou o mês da data quando não houver outro.
+- "valor" é número com ponto decimal, sem R$.
+- "descricao" é um texto curto em português, como "Conta de luz Enel out/26" ou "Salário de outubro".
+- "observacao" diz em uma frase o que a pessoa deve conferir, ou fica vazia.
+
+Responda só com um objeto JSON neste formato:
+{"tipoDocumento":"comprovante de Pix","destino":"funcionaria","descricao":"Salário de outubro","favorecido":"Maria Souza","valor":1900.00,"data":"2026-11-05","pago":true,"competencia":"2026-10","funcionariaId":null,"tipoPagamento":"Salário","formaPagamento":"Pix","categoria":null,"fixoId":null,"colecaoId":null,"categoriaColecao":null,"plataforma":null,"confianca":0.9,"observacao":""}
+
+${text ? `Texto extraído do arquivo "${nome}":\n"""\n${text.slice(0,15000)}\n"""` : `O documento está na imagem anexa (arquivo "${nome}").`}`;
+}
+function normaliza(r){
+  r = (r && typeof r === "object") ? r : {};
+  const o = {
+    tipoDocumento: String(r.tipoDocumento||"documento"), destino: ["funcionaria","colecao","variavel","fixo","trafego","ignorar"].includes(r.destino) ? r.destino : "variavel",
+    descricao: String(r.descricao||""), favorecido: String(r.favorecido||""), valor: num(r.valor), data: /^\d{4}-\d{2}-\d{2}$/.test(r.data||"") ? r.data : today(),
+    pago: r.pago !== false, competencia: /^\d{4}-\d{2}$/.test(r.competencia||"") ? r.competencia : "",
+    funcionariaId: S.funcionarias.some(f=>f.id===r.funcionariaId) ? r.funcionariaId : "",
+    tipoPagamento: TIPOS_PAG.includes(r.tipoPagamento) ? r.tipoPagamento : "Salário", formaPagamento: FORMAS.includes(r.formaPagamento) ? r.formaPagamento : "Pix",
+    categoria: CATS.includes(r.categoria) ? r.categoria : "Outros", fixoId: S.fixos.some(f=>f.id===r.fixoId) ? r.fixoId : "",
+    colecaoId: S.colecoes.some(c=>c.id===r.colecaoId) ? r.colecaoId : (S.colecoes.find(c=>c.status!=="Encerrada")?.id || ""), categoriaColecao: CAT_COL.includes(r.categoriaColecao) ? r.categoriaColecao : "Outros",
+    plataforma: PLATAFORMAS.includes(r.plataforma) ? r.plataforma : "Meta Ads", confianca: Math.max(0, Math.min(1, num(r.confianca))), observacao: String(r.observacao||""),
+  };
+  if(!o.competencia) o.competencia = o.data.slice(0,7);
+  if(o.destino === "funcionaria" && !o.funcionariaId && o.favorecido) o.funcionariaId = "__novo";
+  if(o.destino === "fixo" && !o.fixoId) o.destino = "variavel";
+  if(o.destino === "colecao" && !S.colecoes.length) o.destino = "variavel";
+  return o;
+}
+const ERR_IA = {not_granted:"A leitura automática não está liberada para esta conta.", rate_limited:"Muitas leituras ao mesmo tempo. Aguarde um minuto e toque em Tentar de novo.", images_unavailable:"Esta visualização não aceita imagens. Envie o PDF original do comprovante.", image_rejected:"A imagem não pôde ser lida. Tente uma foto em JPG ou PNG."};
+let lendo = false;
+async function processaFila(){
+  if(lendo) return; lendo = true;
+  try{
+    let it;
+    while((it = S.fila.find(x => x.status === "aguardando"))){
+      it.status = "lendo"; render();
+      try{
+        if(!S.sample) throw {code:"sem_ia"};
+        let text = "", img = null;
+        if(it.file.type === "application/pdf" || /\.pdf$/i.test(it.file.name)){ const r = await prepPdf(it.file); text = r.text.length >= 80 ? r.text : ""; img = r.img; it.thumb = URL.createObjectURL(r.img); }
+        else if(it.file.type.startsWith("image/")) img = await prepImage(it.file);
+        else throw {code:"tipo"};
+        const opts = {modelTier:"default"};
+        if(!text){ if(!S.sampleImg) throw {code:"images_unavailable"}; opts.images = [img]; }
+        it.sug = normaliza(await S.sample.json(promptFor(it.file.name, text), opts));
+        it.status = "pronto";
+      }catch(e){
+        it.status = "erro";
+        it.err = e?.code === "sem_ia" ? "A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante." : e?.code === "tipo" ? "Envie foto (JPG, PNG) ou PDF." : (ERR_IA[e?.code] || "Não foi possível ler este arquivo. Tente de novo ou lance manualmente.");
+      }
+      render();
+    }
+  } finally { lendo = false; }
+}
+function addFiles(list){
+  for(const file of [...list]){
+    S.fila.unshift({id:"q"+(++FID), file, status:"aguardando", thumb: file.type.startsWith("image/") ? URL.createObjectURL(file) : null});
+  }
+  render(); processaFila();
+}
+const DEST = [["funcionaria","Pagamento a funcionária"],["colecao","Custo de lançamento de coleção"],["variavel","Custo do mês"],["fixo","Comprovante de custo fixo"],["trafego","Tráfego pago"],["ignorar","Não lançar"]];
+function avisos(it){
+  const g = it.sug, out = [];
+  if(!g.pago) out.push("Este documento parece ser uma conta ou boleto, sem prova de pagamento.");
+  if(g.destino === "variavel"){ const fx = S.fixos.find(f => f.categoria === g.categoria && fixoNoMes(f, g.competencia)); if(fx) out.push(`Já existe o custo fixo "${fx.nome}" nesta categoria. Lançar como custo do mês vai contar duas vezes; prefira "Comprovante de custo fixo".`); }
+  if(g.destino === "funcionaria" && g.funcionariaId && S.pagamentos.some(p => p.funcionariaId === g.funcionariaId && Math.abs(num(p.valor)-g.valor) < 0.01 && p.data === g.data)) out.push("Já existe um pagamento igual (mesma pessoa, valor e data).");
+  if(g.destino === "variavel" && S.variaveis.some(x => Math.abs(num(x.valor)-g.valor) < 0.01 && x.data === g.data)) out.push("Já existe um custo do mês com o mesmo valor e data.");
+  if(g.destino === "fixo"){ const fx = S.fixos.find(f=>f.id===g.fixoId); if(fx && (fx.comprovantes?.[g.competencia]||[]).length) out.push(`"${fx.nome}" já tem comprovante em ${ymShort(g.competencia)}.`); }
+  return out;
+}
+function cardLeitor(it){
+  const prev = `<div class="prev">${it.thumb ? `<img src="${it.thumb}" alt="">` : "PDF"}</div>`;
+  const head = (pill) => `<div class="ftop"><span class="fn">${esc(it.file.name)}</span>${pill}</div>`;
+  if(it.status === "aguardando" || it.status === "lendo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill acc">${it.status==="lendo"?"lendo":"na fila"}</span>`)}<div class="ia"><span class="spin"></span>${it.status==="lendo" ? "O Claude está lendo o documento. Leva de 10 a 40 segundos." : "Aguardando a leitura dos arquivos anteriores."}</div></div></div>`;
+  if(it.status === "erro") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill bad">não lido</span>`)}<div class="err">${esc(it.err)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Remover</button><button class="btn pri" data-retry="${it.id}">Tentar de novo</button></div></div></div>`;
+  if(it.status === "salvo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill good">lançado</span>`)}<div class="ia">${esc(it.msg)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Tirar da lista</button></div></div></div>`;
+  const g = it.sug, k = it.id;
+  const sel = (key, label, opts, wide) => `<div class="f${wide?" wide":""}"><label for="${k}_${key}">${label}</label><select id="${k}_${key}" data-fk="${key}" data-it="${k}">${opts.map(([v,l])=>`<option value="${esc(v)}"${String(g[key])===String(v)?" selected":""}>${esc(l)}</option>`).join("")}</select></div>`;
+  const inp = (key, label, type, wide) => `<div class="f${wide?" wide":""}"><label for="${k}_${key}">${label}</label><input id="${k}_${key}" data-fk="${key}" data-it="${k}" type="${type}"${type==="number"?' step="0.01" inputmode="decimal"':""} value="${esc(g[key])}"></div>`;
+  let campos = sel("destino","Lançar como",DEST,true);
+  if(g.destino !== "ignorar"){
+    if(g.destino === "funcionaria"){
+      const opts = [["","Escolha"], ...S.funcionarias.map(f=>[f.id,f.nome])]; if(g.favorecido) opts.push(["__novo", `Cadastrar "${g.favorecido}" como nova funcionária`]);
+      campos += sel("funcionariaId","Funcionária",opts) + sel("tipoPagamento","Tipo",TIPOS_PAG.map(x=>[x,x])) + sel("formaPagamento","Forma",FORMAS.map(x=>[x,x]));
+    }
+    if(g.destino === "variavel") campos += sel("categoria","Categoria",CATS.map(x=>[x,x]));
+    if(g.destino === "colecao") campos += sel("colecaoId","Coleção",[["","Escolha"],...S.colecoes.map(c=>[c.id,c.nome])]) + sel("categoriaColecao","Categoria",CAT_COL.map(x=>[x,x]));
+    if(g.destino === "fixo") campos += sel("fixoId","Custo fixo",[["","Escolha"],...S.fixos.map(f=>[f.id,`${f.nome} (${brl(f.valor)})`])]);
+    if(g.destino === "trafego") campos += sel("plataforma","Plataforma",PLATAFORMAS.map(x=>[x,x]));
+    campos += inp("valor","Valor (R$)","number") + inp("data","Data","date") + inp("competencia","Mês de referência","month") + inp("descricao","Descrição","text", true);
+  }
+  const conf = g.confianca >= .8 ? ["good","confiança alta"] : g.confianca >= .5 ? ["warn","confira com atenção"] : ["bad","confiança baixa"];
+  const av = avisos(it);
+  return `<div class="fitem">${prev}<div class="fbody">
+    ${head(`<span class="pill ${conf[0]}">${conf[1]}</span>`)}
+    <div class="ia"><b>${esc(g.tipoDocumento)}</b>${g.favorecido?` · pago a <b>${esc(g.favorecido)}</b>`:""} · ${brl(g.valor)} em ${dBR(g.data)}${g.observacao?`<br>${esc(g.observacao)}`:""}</div>
+    ${av.map(a=>`<div class="banner warn">${esc(a)}</div>`).join("")}
+    <div class="fgrid">${campos}</div>
+    <div class="err" id="err_${k}" hidden></div>
+    <div class="mact"><button class="btn" data-rm="${k}">Descartar</button>${g.destino==="ignorar"?"":`<button class="btn pri" data-ok="${k}">Confirmar e lançar</button>`}</div>
+  </div></div>`;
+}
+async function confirmaLeitor(id, btn){
+  const it = S.fila.find(x => x.id === id); if(!it || !S.db) return;
+  const g = it.sug, errEl = $("#err_"+id);
+  const fail = m => { errEl.hidden = false; errEl.textContent = m; btn.disabled = false; btn.textContent = "Confirmar e lançar"; };
+  if(!(g.valor > 0)) return fail("Informe o valor.");
+  if(g.destino === "funcionaria" && !g.funcionariaId) return fail("Escolha a funcionária.");
+  if(g.destino === "fixo" && !g.fixoId) return fail("Escolha o custo fixo.");
+  if(g.destino === "colecao" && !g.colecaoId) return fail("Escolha a coleção.");
+  btn.disabled = true; btn.textContent = "Salvando…";
+  let anexos = [];
+  if(S.assets){ try{ const r = await S.assets.upload(it.file); anexos = [{id:r.id, nome:it.file.name, tipo:r.contentType}]; } catch(e){ return fail("Não foi possível guardar o arquivo. Use JPG, PNG ou PDF de até 20 MB."); } }
+  const comp = g.competencia || g.data.slice(0,7), base = {criadoEm:new Date().toISOString(), lidoPorIA:true};
+  try{
+    if(g.destino === "funcionaria"){
+      let fid = g.funcionariaId, fnome;
+      if(fid === "__novo"){ const ref = await S.db.collection("funcionarias").add({nome:g.favorecido, funcao:"Costureira", vinculo:"CLT", salario:0, ativa:true, admissao:"", pix:"", telefone:"", criadoEm:base.criadoEm}); fid = ref.id; fnome = g.favorecido; }
+      else fnome = S.funcionarias.find(f=>f.id===fid)?.nome || "";
+      await S.db.collection("pagamentos").add({...base, data:g.data, competencia:comp, funcionariaId:fid, funcionariaNome:fnome, tipo:g.tipoPagamento, valor:g.valor, forma:g.formaPagamento, obs:g.descricao, anexos});
+      it.msg = `Pagamento de ${brl(g.valor)} para ${fnome} lançado em Funcionárias.`;
+    } else if(g.destino === "colecao"){
+      const cn = S.colecoes.find(c=>c.id===g.colecaoId)?.nome || "";
+      await S.db.collection("custosColecao").add({...base, colecaoId:g.colecaoId, colecaoNome:cn, categoria:g.categoriaColecao, fornecedor:g.favorecido, data:g.data, descricao:g.descricao, valor:g.valor, pago:g.pago, anexos});
+      it.msg = `${brl(g.valor)} lançado na coleção ${cn} (${g.categoriaColecao}).`;
+    } else if(g.destino === "variavel"){
+      await S.db.collection("variaveis").add({...base, data:g.data, categoria:g.categoria, descricao:g.descricao || g.tipoDocumento, valor:g.valor, anexos});
+      it.msg = `${brl(g.valor)} lançado em Custos do mês (${g.categoria}).`;
+    } else if(g.destino === "fixo"){
+      const fx = S.fixos.find(f=>f.id===g.fixoId); const body = {...fx}; delete body.id;
+      const cp = {...(fx.comprovantes||{})}; cp[comp] = [...(cp[comp]||[]), ...anexos.map(a=>({...a, valor:g.valor, data:g.data}))];
+      body.comprovantes = cp; await S.db.collection("fixos").doc(fx.id).set(body);
+      it.msg = `Comprovante de ${ymShort(comp)} anexado ao custo fixo "${fx.nome}".${Math.abs(num(fx.valor)-g.valor) > 0.01 ? ` O valor pago (${brl(g.valor)}) difere do cadastrado (${brl(fx.valor)}); ajuste o custo fixo se o valor mudou.` : ""}`;
+    } else if(g.destino === "trafego"){
+      await S.db.collection("trafego").add({...base, data:g.data, plataforma:g.plataforma, campanha:g.descricao, investimento:g.valor, impressoes:null, cliques:null, anexos});
+      it.msg = `${brl(g.valor)} lançado em Tráfego pago (${g.plataforma}).`;
+    }
+    if(!S.assets) it.msg += " O arquivo não foi guardado.";
+    it.status = "salvo"; render();
+  }catch(e){ fail(e?.code === "invalid_argument" ? "Você tem acesso só de leitura." : "Não foi possível lançar agora. Tente de novo."); }
+}
+function vLeitor(){
+  const nP = S.fila.filter(x=>x.status==="pronto").length;
+  return `<div class="head"><div><h2>Ler comprovantes</h2><p>Envie comprovantes de Pix, holerites, contas de luz, internet, aluguel, condomínio, guias, faturas de anúncio e recibos de fotógrafo, modelos e demais custos de coleção. O Claude identifica o tipo, o valor, a data e para quem foi pago, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
+  ${S.sample === null ? `<div class="banner warn">A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante.</div>` : ""}
+  <label class="drop" id="drop" for="upl"><b>Solte os arquivos aqui</b><span class="sub">ou toque para escolher fotos e PDFs. Pode enviar vários de uma vez.</span><span class="btn pri">Escolher arquivos</span><input type="file" id="upl" multiple accept="image/*,application/pdf"></label>
+  ${S.fila.length ? `<div class="fila">${S.fila.map(cardLeitor).join("")}</div>` : `<div class="panel empty"><b>Nenhum documento na fila</b>Cada arquivo enviado aparece aqui com a sugestão de lançamento: funcionária, categoria, valor, data e mês de referência.</div>`}
+  ${nP ? `<p class="sub">${nP} ${nP>1?"documentos aguardam":"documento aguarda"} sua confirmação.</p>` : ""}
+  <p class="sub">Cada leitura custa poucos centavos na API do Claude. Os arquivos confirmados ficam anexados ao lançamento.</p>`;
+}
+document.addEventListener("click", e => {
+  const ok = e.target.closest("[data-ok]"); if(ok){ confirmaLeitor(ok.dataset.ok, ok); return; }
+  const rm = e.target.closest("[data-rm]"); if(rm){ const i = S.fila.findIndex(x=>x.id===rm.dataset.rm); if(i>=0){ const it = S.fila[i]; if(it.thumb) URL.revokeObjectURL(it.thumb); S.fila.splice(i,1); render(); } return; }
+  const rt = e.target.closest("[data-retry]"); if(rt){ const it = S.fila.find(x=>x.id===rt.dataset.retry); if(it){ it.status = "aguardando"; render(); processaFila(); } }
+});
+document.addEventListener("change", e => {
+  if(e.target.id === "upl" && e.target.files?.length){ addFiles(e.target.files); return; }
+  const f = e.target.closest("[data-fk]"); if(!f) return;
+  const it = S.fila.find(x=>x.id===f.dataset.it); if(!it) return;
+  const k = f.dataset.fk; it.sug[k] = f.type === "number" ? num(f.value) : f.value;
+  if(["destino","funcionariaId","categoria","fixoId","colecaoId","competencia","data","valor"].includes(k)){ f.blur(); render(); }
+});
+document.addEventListener("input", e => {
+  const f = e.target.closest("input[data-fk]"); if(!f) return;
+  const it = S.fila.find(x=>x.id===f.dataset.it); if(it) it.sug[f.dataset.fk] = f.type === "number" ? num(f.value) : f.value;
+});
+document.addEventListener("dragover", e => { const d = e.target.closest?.("#drop"); if(d){ e.preventDefault(); d.classList.add("over"); } });
+document.addEventListener("dragleave", e => { const d = e.target.closest?.("#drop"); if(d) d.classList.remove("over"); });
+document.addEventListener("drop", e => { const d = e.target.closest?.("#drop"); if(d){ e.preventDefault(); d.classList.remove("over"); if(e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); } });
+
+
+function vColecoes(){
+  const cols = S.colecoes.slice().sort((a,b)=>(b.lancamento||"9").localeCompare(a.lancamento||"9"));
+  if(COLSEL && !cols.some(c=>c.id===COLSEL)) COLSEL = "";
+  if(!COLSEL && cols.length) COLSEL = (cols.find(c=>c.status!=="Encerrada") || cols[0]).id;
+  const norm = s => (s||"").trim().toLowerCase();
+  const stats = c => {
+    const cs = S.custosColecao.filter(x => x.colecaoId === c.id);
+    const gasto = cs.reduce((a,x)=>a+num(x.valor),0), aPagar = cs.filter(x=>x.pago===false).reduce((a,x)=>a+num(x.valor),0);
+    const pids = new Set(S.produtos.filter(p => norm(p.colecao) === norm(c.nome)).map(p=>p.id));
+    const vs = S.vendas.filter(v => ativa(v) && pids.has(v.produtoId));
+    let fat = 0, mc = 0, pecas = 0; vs.forEach(v => { const k = vendaCalc(v); fat += k.receita; mc += k.lucro; pecas += num(v.qtd); });
+    return {cs, gasto, aPagar, fat, mc, pecas, nProd: pids.size};
+  };
+  const cards = cols.map(c => { const st = stats(c), orc = num(c.orcamento);
+    return `<button class="ccard${c.id===COLSEL?" on":""}" data-colsel="${c.id}">
+      <span class="ftop"><b class="fn">${esc(c.nome)}</b>${exBadge(c)}<span class="pill ${STATUS_COL_CLS[c.status]||""}">${esc(c.status||"Planejamento")}</span></span>
+      <span class="sub">${c.lancamento ? "Lançamento " + dBR(c.lancamento) : "Sem data de lançamento"}</span>
+      <span class="cnum"><span>Gasto <b>${brl(st.gasto)}</b></span><span>${orc ? "de " + brl(orc) : ""}</span></span>
+      ${orc ? `<span class="meter"><i style="width:${Math.min(100, st.gasto/orc*100)}%;${st.gasto>orc?"background:var(--bad)":""}"></i></span>` : ""}
+      <span class="sub">Faturamento das peças ${brl(st.fat)}</span></button>`; }).join("");
+  const c = cols.find(x => x.id === COLSEL);
+  let det = "";
+  if(c){
+    const st = stats(c), orc = num(c.orcamento), saldo = orc - st.gasto;
+    const porCat = {}; st.cs.forEach(x => porCat[x.categoria||"Outros"] = (porCat[x.categoria||"Outros"]||0) + num(x.valor));
+    const cats = Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+    const lista = st.cs.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+    const ret = st.gasto ? st.mc / st.gasto : NaN;
+    det = `<div class="head"><div><h2>${esc(c.nome)}</h2><p>${c.obs ? esc(c.obs) : "Custos do lançamento e resultado das peças desta coleção."}</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-edit="colecoes" data-id="${c.id}">Editar coleção</button><button class="btn pri" data-new="custosColecao">Adicionar custo</button></div></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div class="kpi"><span class="l">Gasto no lançamento</span><span class="v num">${brl(st.gasto)}</span><span class="s">${st.aPagar ? brl(st.aPagar) + " ainda a pagar" : "Tudo pago"}</span></div>
+      <div class="kpi"><span class="l">Orçamento</span><span class="v num">${orc ? brl(orc) : "—"}</span><span class="s">${orc ? (saldo >= 0 ? "Sobram " + brl(saldo) : "Estourou " + brl(-saldo)) : "Defina em Editar coleção"}</span></div>
+      <div class="kpi"><span class="l">Faturamento da coleção</span><span class="v num">${brl(st.fat)}</span><span class="s">${st.pecas} ${st.pecas===1?"peça vendida":"peças vendidas"} de ${st.nProd} ${st.nProd===1?"modelo":"modelos"}${num(c.metaFaturamento) ? " · " + pct(st.fat/num(c.metaFaturamento),0) + " da meta" : ""}</span></div>
+      <div class="kpi"><span class="l">Retorno do lançamento</span><span class="v num ${isFinite(ret)?(ret>=1?"pos":"negv"):""}">${isFinite(ret) ? ret.toLocaleString("pt-BR",{maximumFractionDigits:2}) + "×" : "—"}</span><span class="s">${isFinite(ret) ? (ret >= 1 ? "As vendas já pagaram o lançamento" : "Faltam " + brl(st.gasto - st.mc) + " de sobra para pagar o lançamento") : "Sobra das vendas ÷ custo do lançamento"}</span></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3>Custos lançados</h3><div class="tw"><table>
+        <thead><tr><th>Data</th><th>Categoria</th><th>Profissional</th><th class="n">Valor</th></tr></thead>
+        <tbody>${lista.length ? lista.map(x => `<tr class="click" data-edit="custosColecao" data-id="${x.id}"><td>${dBR(x.data)}</td><td>${esc(x.categoria)}${exBadge(x)}${x.descricao?`<div class="sub">${esc(x.descricao)}</div>`:""}${docLinks(x.anexos)}</td><td>${esc(x.fornecedor||"")}${x.pago===false?`<div><span class="pill warn">a pagar</span></div>`:""}</td><td class="n">${brl(x.valor)}</td></tr>`).join("")
+          : emptyRow(4, "Nenhum custo lançado", "Fotógrafo, modelos, maquiagem, locação, vídeo, transporte e alimentação do ensaio entram aqui.")}</tbody>
+        ${lista.length ? `<tfoot><tr><td colspan="3">Total</td><td class="n">${brl(st.gasto)}</td></tr></tfoot>` : ""}
+      </table></div></div>
+      <div class="panel"><h3>Para onde foi o dinheiro</h3><div class="tw"><table>
+        <thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">% do lançamento</th></tr></thead>
+        <tbody>${cats.length ? cats.map(([k,v]) => `<tr><td>${esc(k)}<div class="meter"><i style="width:${st.gasto ? v/st.gasto*100 : 0}%"></i></div></td><td class="n">${brl(v)}</td><td class="n">${pct(v/st.gasto,0)}</td></tr>`).join("") : emptyRow(3, "Sem custos ainda", "A divisão por categoria aparece aqui.")}</tbody>
+      </table></div>
+      <p class="sub" style="margin:10px 0 0">As vendas contam para a coleção quando a peça está ligada a ela na aba Peças (campo Coleção).</p></div>
+    </div>`;
+  }
+  return `<div class="head"><div><h2>Coleções</h2><p>Orçamento e custos de cada lançamento: fotógrafo, vídeo maker, modelos, maquiagem, locação do espaço, transporte, alimentação e o que mais o ensaio pedir. Os custos entram no resultado do mês em que foram pagos.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler comprovantes</a><button class="btn pri" data-new="colecoes">Nova coleção</button></div></div>
+  ${cols.length ? `<div class="cgrid">${cards}</div>${det}` : `<div class="panel empty"><b>Nenhuma coleção cadastrada</b>Crie a primeira coleção para planejar o orçamento do lançamento e lançar os custos do ensaio.</div>`}
+  <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
+}
+const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, ajustes:vAjustes};
+function render(){
+  const v = curView();
+  document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
+  document.querySelectorAll("#tabs a").forEach(a => { if(a.hash === "#"+v) a.setAttribute("aria-current","page"); });
+  $("#mes").value = MES;
+  if(S.loaded.size < NLOAD && !S.failed){ return; }
+  // keep config form edits from being wiped while typing
+  if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
+  if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
+  const pre = S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "";
+  $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
+  if(v === "painel") bindChart();
+  if(v === "ajustes") bindAjustes();
+}
+
+// events
+document.addEventListener("click", e => {
+  const n = e.target.closest("[data-new]"); if(n && !n.disabled){ openForm(n.dataset.new, null, n.dataset.cat ? {categoria:n.dataset.cat} : null); return; }
+  const cs = e.target.closest("[data-colsel]"); if(cs){ COLSEL = cs.dataset.colsel; render(); return; }
+  const pf = e.target.closest("[data-pagf]"); if(pf){ PAGF = pf.dataset.pagf; render(); $("#pags")?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
+  if(e.target.closest("select.st, select.flt, a")) return;
+  const r = e.target.closest("[data-edit]");
+  if(r){ const col = r.dataset.edit; const d = S[col].find(x => x.id === r.dataset.id); if(d) openForm(col, d); }
+});
+document.addEventListener("change", async e => {
+  if(e.target.id === "pagf"){ PAGF = e.target.value; render(); return; }
+  const s = e.target.closest("select.st"); if(!s) return;
+  const v = S.vendas.find(x => x.id === s.dataset.status); if(!v || !S.db) return;
+  const body = {...v, status:s.value}; delete body.id;
+  try{ await S.db.collection("vendas").doc(v.id).set(body); toast("Status: " + s.value); } catch(err){ toast("Não foi possível mudar o status"); s.value = v.status; }
+});
+$("#mes").addEventListener("change", e => { if(e.target.value){ MES = e.target.value; render(); } });
+$("#mprev").onclick = () => { MES = addYm(MES,-1); render(); };
+$("#mnext").onclick = () => { MES = addYm(MES,1); render(); };
+window.addEventListener("hashchange", render);
+$("#mes").value = MES;
+render();
+
+// ---------- data ----------
+(async () => {
+  const timer = setTimeout(() => { if(S.loaded.size < NLOAD){ S.failed = "Os dados ainda não carregaram. Verifique a conexão; o app continua tentando."; render(); } }, 10000);
+  let db = null;
+  try{ db = await window.claude?.use?.("db"); }catch(e){}
+  if(!db){ clearTimeout(timer); S.failed = "Não foi possível conectar ao banco de dados. Verifique a internet e recarregue o app."; S.loaded = new Set(COLS.concat('config')); render(); return; }
+  S.db = db;
+  window.claude.use("assets").then(a => { S.assets = a; }).catch(()=>{});
+  window.claude.use("sample").then(async sm => { S.sample = sm; S.sampleImg = sm ? (await sm.limits().catch(()=>null))?.images || null : null; if(curView()==="leitor") render(); }).catch(()=>{});
+  const done = k => { if(!S.loaded.has(k)){ S.loaded.add(k); if(S.loaded.size >= NLOAD){ clearTimeout(timer); if(S.failed && S.failed.startsWith("Os dados ainda")) S.failed = null; } } };
+  for(const col of COLS){
+    db.collection(col).onSnapshot(snap => {
+      S[col] = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      if(!snap.metadata.fromCache) done(col);
+      else if(S.loaded.size < NLOAD) done(col);
+      render();
+    }, err => { done(col); S.failed = "Parte dos dados não pôde ser carregada. Recarregue a página mais tarde."; render(); });
+  }
+  db.doc("config/geral").onSnapshot(snap => {
+    S.config = {...CFG_DEF, ...(snap.exists ? snap.data() : {})};
+    done("config"); render();
+  }, err => { done("config"); render(); });
+})();
+})();
+</script>
+
+</body>
+</html>
