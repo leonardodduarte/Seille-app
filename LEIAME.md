@@ -34,6 +34,21 @@ App de gestão da Seille: pedidos sob demanda, ficha técnica das peças, custos
 
 Sem este passo o app funciona normalmente; só a aba **Adicionar documentos** fica indisponível.
 
+## 2b. Pedidos automáticos da Nuvemshop
+
+Cada pedido pago na loja entra sozinho em **Pedidos**, com cliente, cidade, estado, cupom e frete.
+
+1. No Supabase, **SQL Editor**: rode o trecho final de `supabase/schema.sql` (tabela `integracoes`).
+2. No portal de parceiros da Nuvemshop (**partners.nuvemshop.com.br**), crie um aplicativo:
+   - **URL de redirecionamento**: `https://SEU-PROJETO.supabase.co/functions/v1/nuvemshop/autorizar`
+   - **Permissões**: ler pedidos (Orders), ler clientes (Customers) e ler produtos (Products).
+   - Anote o **ID do aplicativo** e o **Client Secret**.
+3. No Supabase, **Edge Functions** → **Secrets**: crie `NUVEMSHOP_CLIENT_ID` e `NUVEMSHOP_CLIENT_SECRET`.
+4. **Edge Functions** → **Deploy a new function** → **Via Editor**. Nome: `nuvemshop`. Cole o conteúdo de `supabase/functions/nuvemshop/index.ts`, **desligue "Verify JWT"** e clique em **Deploy**. A função confere sozinha quem é membro e a assinatura dos avisos da Nuvemshop.
+5. No app: **Ajustes** → **Loja Nuvemshop** → **Conectar loja** e autorize. Depois, escolha uma data e toque em **Buscar pedidos** para trazer o histórico.
+
+Pedidos aguardando pagamento não entram. Cancelados e estornados ficam com status **Cancelado**. O custo da peça vem da ficha técnica quando o nome do produto na loja for igual ao da aba Peças; o frete pago, o custo e a origem podem ser ajustados no pedido e não são sobrescritos.
+
 ## 3. Publicar o app (GitHub Pages)
 
 1. No repositório do GitHub: **Settings** → **Pages**.
@@ -68,4 +83,5 @@ No Supabase, **Database** → **Backups** mostra os backups diários automático
 - `manifest.webmanifest`, `sw.js`, `icons/` — instalação como aplicativo
 - `supabase/schema.sql` — criação do banco e das regras de acesso
 - `supabase/functions/ler-comprovante/index.ts` — função que chama o Claude
+- `supabase/functions/nuvemshop/index.ts` — ligação com a loja Nuvemshop
 - `vendor/` — bibliotecas usadas pelo app (Supabase e leitor de PDF)

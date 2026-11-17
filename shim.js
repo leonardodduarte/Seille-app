@@ -101,6 +101,16 @@
     },
   };
 
+  // Ligação com a Nuvemshop (função "nuvemshop" no Supabase)
+  window.seilleNuvem = {
+    async chamar(acao, extra = {}) {
+      if (!sb) throw { code: "unavailable" };
+      const { data, error } = await sb.functions.invoke("nuvemshop", { body: { acao, ...extra } });
+      if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw { code: j.code || (error.context?.status === 404 ? "sem_funcao" : "unavailable"), message: j.message || String(error.message || error) }; }
+      return data;
+    },
+  };
+
   const CAPS = { db, assets, sample, downloads };
   window.claude = { use: async nome => { if (!sb) return null; await prontoP; return CAPS[nome] ?? null; } };
 

@@ -49,3 +49,12 @@ insert into public.membros (email) values
   ('seu-email@exemplo.com'),
   ('email-da-sua-esposa@exemplo.com')
 on conflict do nothing;
+
+-- Integração com a Nuvemshop: guarda a chave de acesso da loja.
+-- Sem regras de acesso: o app não lê esta tabela; só a função "nuvemshop" (no servidor) usa.
+create table if not exists public.integracoes (
+  nome text primary key,
+  dados jsonb not null default '{}'::jsonb,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.integracoes enable row level security;

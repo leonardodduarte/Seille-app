@@ -20,7 +20,7 @@ img{max-width:100%}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=3"></script>
+<script src="shim.js?v=4"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -119,6 +119,10 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .seg.full{align-self:stretch}
 .seg.full button{flex:1}
 .orow select.st{flex:none}
+.ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filtros{display:flex;gap:8px;flex-wrap:wrap}
+.filtros input{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px}
+.filtros select.flt{border-radius:999px;padding:9px 14px;background:var(--surface)}
 
 main{padding-block:16px 64px}
 section.view{display:flex;flex-direction:column;gap:20px}
@@ -314,7 +318,7 @@ const daysBetween = (a, b) => Math.round((new Date(b+"T12:00:00") - new Date(a+"
 function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
 
 // ---------- domain ----------
-const ORIGENS = ["Meta Ads","Google Ads","TikTok Ads","Pinterest Ads","Influenciadores","Instagram orgânico","Busca orgânica","Indicação","WhatsApp","Direto / outros"];
+const ORIGENS = ["Meta Ads","Google Ads","TikTok Ads","Pinterest Ads","Influenciadores","Instagram orgânico","Busca orgânica","Indicação","WhatsApp","Direto / outros","Loja virtual (sem origem)"];
 const PLATAFORMAS = ["Meta Ads","Google Ads","TikTok Ads","Pinterest Ads","Influenciadores"];
 const STATUS = ["Recebido","Em produção","Pronto","Enviado","Entregue","Cancelado"];
 const STATUS_CLS = {"Recebido":"", "Em produção":"acc", "Pronto":"warn", "Enviado":"good", "Entregue":"good", "Cancelado":"bad"};
@@ -423,6 +427,9 @@ const SCHEMAS = {
     {key:"data",label:"Data do pedido",type:"date",req:true},
     {key:"pedido",label:"Nº do pedido",type:"text"},
     {key:"cliente",label:"Cliente",type:"text"},
+    {key:"cidade",label:"Cidade",type:"text"},
+    {key:"estado",label:"Estado (UF)",type:"text",h:"Ex.: SC, SP"},
+    {key:"cupom",label:"Cupom de desconto",type:"text",h:"Código do cupom usado, se houver"},
     {key:"produtoId",label:"Peça",type:"select",opts:()=>[["","Escolha a peça"],...S.produtos.slice().sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")).map(p=>[p.id,p.nome])],req:true},
     {key:"tamanho",label:"Tamanho",type:"text"},
     {key:"qtd",label:"Quantidade",type:"number",step:"1",min:"1",req:true},
@@ -754,27 +761,57 @@ function bindChart(){
   box.addEventListener("mouseleave", ()=> tip.hidden = true);
 }
 
-let PEDF = "todos";
+let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "";
+const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"]};
 function vPedidos(){
   const todos = S.vendas.filter(v => (v.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
   const cnt = k => todos.filter(v => PED_GRUPO[k].includes(v.status||"Recebido")).length;
-  const vs = PEDF === "todos" ? todos : todos.filter(v => PED_GRUPO[PEDF].includes(v.status||"Recebido"));
+  const q = semAc(PEDQ);
+  const filtro = v => (!q || semAc([v.cliente, v.produtoNome, v.pedido, v.cidade].join(" ")).includes(q)) && (!PEDUF || (v.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !v.cupom : (v.cupom||"") === PEDCUP));
+  const vs = (PEDF === "todos" ? todos : todos.filter(v => PED_GRUPO[PEDF].includes(v.status||"Recebido"))).filter(filtro);
+  const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
+  const cups = [...new Set(todos.map(v => v.cupom).filter(Boolean))].sort();
+  const porPed = new Map(); vs.filter(ativa).forEach(v => { const k = v.pedido || v.id, c = vendaCalc(v); const o = porPed.get(k) || {uf:v.estado||"", cupom:v.cupom||"", receita:0, desconto:0, frete:0}; o.receita += c.receita; o.desconto += num(v.desconto); o.frete += num(v.freteCobrado); porPed.set(k, o); });
+  const agrupa = key => { const m = {}; porPed.forEach(o => { const k = o[key] || ""; (m[k] ||= {n:0, receita:0, desconto:0, frete:0}); m[k].n++; m[k].receita += o.receita; m[k].desconto += o.desconto; m[k].frete += o.frete; }); return Object.entries(m).sort((a,b)=>b[1].receita-a[1].receita); };
+  const pUF = agrupa("uf"), pCup = agrupa("cupom");
+  const nPed = porPed.size, totFrete = [...porPed.values()].reduce((a,o)=>a+o.frete,0), comCupom = [...porPed.values()].filter(o=>o.cupom).length;
   let tr=0, tl=0; vs.filter(ativa).forEach(v=>{const c=vendaCalc(v); tr+=c.receita; tl+=c.lucro;});
   const ini = s => (s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("") || "?";
   const seg = [["and","Em andamento"],["fin","Finalizados"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${k==="todos"?todos.length:cnt(k)}</span></button>`).join("");
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre pelo menos uma peça em Mais → Peças antes de lançar pedidos. O custo vem da ficha técnica.</div>`}
   <div class="seg full">${seg}</div>
-  <div class="seclbl">Pedidos de ${ymLabel(MES)}<span>${vs.length} ${vs.length===1?"pedido":"pedidos"}</span></div>
+  <div class="filtros">
+    <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
+    <select class="flt" id="peduf" aria-label="Estado"><option value="">Todos os estados</option>${ufs.map(u=>`<option${u===PEDUF?" selected":""}>${esc(u)}</option>`).join("")}</select>
+    <select class="flt" id="pedcup" aria-label="Cupom"><option value="">Com e sem cupom</option><option value="__sem"${PEDCUP==="__sem"?" selected":""}>Sem cupom</option>${cups.map(c=>`<option${c===PEDCUP?" selected":""}>${esc(c)}</option>`).join("")}</select>
+  </div>
+  <div class="seclbl">Pedidos de ${ymLabel(MES)}<span>${vs.length} ${vs.length===1?"item":"itens"} · ${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
   ${vs.length ? `<div class="olist">${vs.map(v=>{const c=vendaCalc(v); return `<div class="ocard" data-edit="vendas" data-id="${v.id}">
     <div class="av">${esc(ini(v.cliente || v.produtoNome))}</div>
     <div class="ob"><b>${esc(v.cliente || v.produtoNome || "Pedido")}${exBadge(v)}</b>
       <span class="s2">${[v.produtoNome, v.tamanho, num(v.qtd)>1?num(v.qtd)+" un.":"", dBR(v.data), v.pedido?"#"+v.pedido:""].filter(Boolean).map(esc).join(" · ")}</span>
+      ${v.cidade||v.estado||v.cupom||v.canal ? `<span class="s3">${[[v.cidade, v.estado].filter(Boolean).join(" – "), v.cupom ? "cupom " + v.cupom : "", num(v.freteCobrado) ? "frete " + brl(v.freteCobrado) : "", v.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
       <div class="orow"><select class="st${PED_GRUPO.and.includes(v.status||"Recebido")?" on":""}" data-status="${v.id}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===v.status?" selected":""}>${s}</option>`).join("")}</select>
       <span class="val">${brl(c.receita)}<div class="sub" style="font-weight:400;text-align:right">sobra ${brl(c.lucro)}</div></span></div></div>
     <span class="chev">›</span></div>`}).join("")}</div>
     <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· sobra ${brl(tl)}</span></span></div>`
-    : `<div class="panel empty"><b>Nenhum pedido aqui</b>Toque em Novo pedido para lançar uma venda.</div>`}
+    : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Toque em Novo pedido para lançar uma venda."}</div>`}
+  ${nPed ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    <div class="kpi"><span class="l">Ticket médio</span><span class="v num">${brl(tr/nPed)}</span><span class="s">${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
+    <div class="kpi"><span class="l">Com cupom</span><span class="v num">${pct(comCupom/nPed,0)}</span><span class="s">${comCupom} de ${nPed} pedidos</span></div>
+    <div class="kpi"><span class="l">Frete cobrado</span><span class="v num">${brl(totFrete)}</span><span class="s">média ${brl(totFrete/nPed)} por pedido</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>Por estado</h3><div class="tw"><table>
+      <thead><tr><th>Estado</th><th class="n">Pedidos</th><th class="n">Faturamento</th><th class="n">Frete</th></tr></thead>
+      <tbody>${pUF.map(([k,o]) => `<tr><td>${esc(k || "Não informado")}</td><td class="n">${o.n}</td><td class="n">${brl(o.receita)}</td><td class="n">${brl(o.frete)}</td></tr>`).join("")}</tbody>
+    </table></div></div>
+    <div class="panel"><h3>Cupons</h3><div class="tw"><table>
+      <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n">Desconto dado</th><th class="n">Faturamento</th></tr></thead>
+      <tbody>${pCup.map(([k,o]) => `<tr><td>${k ? esc(k) : `<span class="sub">Sem cupom</span>`}</td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.receita)}</td></tr>`).join("")}</tbody>
+    </table></div></div>
+  </div>` : ""}
   <p class="sub">Sobra = receita − custo da peça − taxas e impostos − frete pago. É a margem de contribuição do pedido, antes de anúncios e custos fixos.</p>`;
 }
 
@@ -951,6 +988,30 @@ function vTrafego(){
   </table></div></div>`;
 }
 
+S.nuvem = null; let nuvemCarregando = false;
+async function carregaNuvem(){
+  if(nuvemCarregando || !window.seilleNuvem) return; nuvemCarregando = true;
+  try{ S.nuvem = await window.seilleNuvem.chamar("status"); }
+  catch(e){ S.nuvem = {erro: e?.code === "sem_funcao" ? "A função nuvemshop ainda não foi publicada no Supabase." : e?.code === "not_granted" ? "Sua conta não tem acesso." : "Não foi possível consultar a ligação com a Nuvemshop."}; }
+  nuvemCarregando = false; if(curView() === "ajustes") render();
+}
+function painelNuvem(){
+  const n = S.nuvem;
+  if(!n){ carregaNuvem(); }
+  const dt = iso => iso ? new Date(iso).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}) : "—";
+  let corpo;
+  if(!n) corpo = `<p class="sub" style="margin:0"><span class="spin"></span>Consultando…</p>`;
+  else if(n.erro) corpo = `<p class="sub" style="margin:0">${esc(n.erro)}</p>`;
+  else if(!n.configurado) corpo = `<p class="sub" style="margin:0">Falta cadastrar o ID e o Client Secret do aplicativo nos Secrets do Supabase (NUVEMSHOP_CLIENT_ID e NUVEMSHOP_CLIENT_SECRET).</p>`;
+  else if(!n.conectado) corpo = `<p class="sub" style="margin:0">Conecte a loja para os pedidos pagos entrarem sozinhos em Pedidos, com cliente, cidade, estado, cupom e frete.</p>
+    <div><button class="btn pri" id="nsconectar">Conectar loja Nuvemshop</button></div>`;
+  else corpo = `<p style="margin:0"><span class="pill acc">Conectada</span> <span class="sub">Loja ${esc(n.loja)} · desde ${dt(n.conectadoEm)} · última busca ${dt(n.ultimaSync)}</span></p>
+    <p class="sub" style="margin:0">Pedidos pagos entram sozinhos. Para trazer pedidos antigos, escolha a data e toque em Buscar.</p>
+    ${n.ultimoErro ? `<div class="banner warn">${esc(n.ultimoErro)}</div>` : ""}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="date" id="nsdesde" value="${MES.slice(0,4)}-01-01" class="flt" style="border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--surface)">
+      <button class="btn pri" id="nssync">Buscar pedidos</button><button class="btn danger" id="nsdesc">Desconectar</button></div>`;
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Loja Nuvemshop</h3>${corpo}</div>`;
+}
 function vAjustes(){
   const k = S.config;
   const nEx = COLS.reduce((a,c)=>a+S[c].filter(d=>d.exemplo).length,0);
@@ -965,6 +1026,7 @@ function vAjustes(){
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
+  ${painelNuvem()}
   <div class="panel" style="display:flex;flex-direction:column;gap:12px">
     <h3>Sua conta</h3>
     <p class="sub" style="margin:0">Conectado como ${esc(window.seilleAuth?.email || "")}.</p>
@@ -984,6 +1046,25 @@ function vAjustes(){
 
 function bindAjustes(){
   const form = $("#cfg"); if(!form) return;
+  const ncon = $("#nsconectar");
+  if(ncon) ncon.onclick = async () => {
+    ncon.disabled = true; ncon.textContent = "Abrindo a Nuvemshop…";
+    try{ const r = await window.seilleNuvem.chamar("conectar", {voltar: location.origin + location.pathname}); location.href = r.url; }
+    catch(e){ toast("Não foi possível iniciar a conexão"); ncon.disabled = false; ncon.textContent = "Conectar loja Nuvemshop"; }
+  };
+  const nsy = $("#nssync");
+  if(nsy) nsy.onclick = async () => {
+    nsy.disabled = true; nsy.innerHTML = `<span class="spin"></span>Buscando…`;
+    try{ const r = await window.seilleNuvem.chamar("sincronizar", {desde: $("#nsdesde").value}); toast(`${r.total} ${r.total===1?"pedido importado":"pedidos importados"} da Nuvemshop`); }
+    catch(e){ toast("A busca falhou. Veja o aviso em Ajustes."); }
+    S.nuvem = null; render();
+  };
+  const nde = $("#nsdesc");
+  if(nde) nde.onclick = async () => {
+    if(!nde.classList.contains("arm")){ nde.classList.add("arm"); nde.textContent = "Confirmar: desconectar"; return; }
+    try{ await window.seilleNuvem.chamar("desconectar"); toast("Loja desconectada"); }catch(e){ toast("Não foi possível desconectar"); }
+    S.nuvem = null; render();
+  };
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const o = {}; for(const key of Object.keys(CFG_DEF)) o[key] = num(form.elements[key].value);
@@ -998,9 +1079,9 @@ function bindAjustes(){
   };
   $("#exp").onclick = async () => {
     const vs = S.vendas.filter(v => (v.data||"").slice(0,7) === MES);
-    const hdr = ["Data","Pedido","Cliente","Peça","Tamanho","Qtd","Preço unit.","Desconto","Frete cobrado","Frete pago","Custo unit.","Origem","Status","Receita","Taxas e impostos","Sobra"];
+    const hdr = ["Data","Pedido","Cliente","Cidade","UF","Cupom","Peça","Tamanho","Qtd","Preço unit.","Desconto","Frete cobrado","Frete pago","Custo unit.","Origem","Status","Receita","Taxas e impostos","Sobra"];
     const n2 = n => (Math.round(num(n)*100)/100).toString().replace(".",",");
-    const lines = [hdr, ...vs.map(v => { const c = vendaCalc(v); return [dBR(v.data),v.pedido,v.cliente,v.produtoNome,v.tamanho,v.qtd,n2(v.precoUnit),n2(v.desconto),n2(v.freteCobrado),n2(v.fretePago),n2(v.custoUnit),v.origem,v.status,n2(c.receita),n2(c.taxas),n2(c.lucro)]; })];
+    const lines = [hdr, ...vs.map(v => { const c = vendaCalc(v); return [dBR(v.data),v.pedido,v.cliente,v.cidade,v.estado,v.cupom,v.produtoNome,v.tamanho,v.qtd,n2(v.precoUnit),n2(v.desconto),n2(v.freteCobrado),n2(v.fretePago),n2(v.custoUnit),v.origem,v.status,n2(c.receita),n2(c.taxas),n2(c.lucro)]; })];
     const csv = "﻿" + lines.map(r => r.map(x => `"${String(x??"").replace(/"/g,'""')}"`).join(";")).join("\r\n");
     const dl = await window.claude?.use?.("downloads");
     if(!dl){ toast("Download indisponível nesta visualização"); return; }
@@ -1317,6 +1398,7 @@ function render(){
   // keep config form edits from being wiped while typing
   if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
   if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
+  if(document.activeElement?.id === "nsdesde") return;
   const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
   if(v === "painel") bindChart();
@@ -1340,10 +1422,17 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", async e => {
   if(e.target.id === "pagf"){ PAGF = e.target.value; render(); return; }
+  if(e.target.id === "peduf"){ PEDUF = e.target.value; render(); return; }
+  if(e.target.id === "pedcup"){ PEDCUP = e.target.value; render(); return; }
   const s = e.target.closest("select.st"); if(!s) return;
   const v = S.vendas.find(x => x.id === s.dataset.status); if(!v || !S.db) return;
   const body = {...v, status:s.value}; delete body.id;
   try{ await S.db.collection("vendas").doc(v.id).set(body); toast("Status: " + s.value); } catch(err){ toast("Não foi possível mudar o status"); s.value = v.status; }
+});
+let pedqT = 0;
+document.addEventListener("input", e => {
+  if(e.target.id !== "pedq") return;
+  clearTimeout(pedqT); pedqT = setTimeout(() => { PEDQ = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#pedq"); if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(_){} } }, 250);
 });
 $("#mes").addEventListener("change", e => { if(e.target.value){ MES = e.target.value; render(); } });
 $("#mprev").onclick = () => { MES = addYm(MES,-1); render(); };
