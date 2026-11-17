@@ -51,6 +51,7 @@ const pagina = (titulo: string, texto: string, status = 200) =>
 type Dados = {
   store_id?: number; access_token?: string; scope?: string; conectado_em?: string; ultima_sync?: string;
   state?: string; state_exp?: number; voltar?: string; ultimo_erro?: string;
+  ultima_busca?: { quando: string; desde: string; encontrados: number; importados: number; aguardando: number; cancelados: number };
 };
 async function ler(): Promise<Dados> {
   const { data } = await admin.from("integracoes").select("dados").eq("nome", "nuvemshop").maybeSingle();
@@ -95,8 +96,10 @@ const variante = (p: any) => (Array.isArray(p?.variant_values) ? p.variant_value
 const custoPeca = (p: any) => n(p.tecidoMetros) * n(p.tecidoPrecoMetro) + n(p.aviamentos) + n(p.costura) + n(p.embalagem) + n(p.outros);
 const EM_ABERTO = ["Recebido", "Em produção", "Pronto"];
 
-async function importar(pedidos: any[]) {
-  if (!pedidos.length) return 0;
+type Contagem = { importados: number; aguardando: number; cancelados: number };
+async function importar(pedidos: any[]): Promise<Contagem> {
+  const cont: Contagem = { importados: 0, aguardando: 0, cancelados: 0 };
+  if (!pedidos.length) return cont;
   const { data: prods } = await admin.from("docs").select("id,data").eq("col", "produtos");
   const produtos = (prods ?? []).map((r: any) => ({ id: r.id, ...r.data, chave: semAcento(r.data?.nome ?? "") }));
   const acharProduto = (nome: string) => {
@@ -113,13 +116,12 @@ async function importar(pedidos: any[]) {
   }
 
   const gravar: any[] = [], apagar: string[] = [];
-  let importados = 0;
   for (const o of pedidos) {
     const cancelado = o.status === "cancelled" || ["refunded", "voided"].includes(o.payment_status);
     const pago = ["paid", "authorized"].includes(o.payment_status);
     const doPedido = [...existentes.entries()].filter(([, d]) => d.nuvemshopId === String(o.id));
-    if (!pago && !cancelado) continue;            // aguardando pagamento: ainda não é venda
-    if (cancelado && !doPedido.length) continue;  // cancelado antes de entrar no app
+    if (!pago && !cancelado) { cont.aguardando++; continue; }      // aguardando pagamento: ainda não é venda
+    if (cancelado && !doPedido.length) { cont.cancelados++; continue; } // cancelado antes de entrar no app
 
     const itens: any[] = Array.isArray(o.products) ? o.products : [];
     const subtotal = itens.reduce((a, p) => a + n(p.price) * n(p.quantity), 0);
@@ -155,29 +157,34 @@ async function importar(pedidos: any[]) {
       gravar.push({ col: "vendas", id, data: novo, updated_at: new Date().toISOString() });
     });
     doPedido.forEach(([id]) => { const k = Number(id.split("-").pop()); if (k >= itens.length) apagar.push(id); });
-    importados++;
+    if (cancelado) cont.cancelados++; else cont.importados++;
   }
   for (let i = 0; i < gravar.length; i += 200) {
     const { error } = await admin.from("docs").upsert(gravar.slice(i, i + 200), { onConflict: "col,id" });
     if (error) throw error;
   }
   if (apagar.length) await admin.from("docs").delete().eq("col", "vendas").in("id", apagar);
-  return importados;
+  return cont;
 }
 
 async function sincronizar(d: Dados, desde: string) {
-  let total = 0;
+  const res = { encontrados: 0, importados: 0, aguardando: 0, cancelados: 0 };
+  let todos = true; // pede pedidos de qualquer situação, inclusive arquivados
   for (let pag = 1; pag <= 100; pag++) {
     const q = new URLSearchParams({ per_page: "200", page: String(pag), created_at_min: `${desde}T00:00:00-03:00` });
+    if (todos) q.set("status", "any");
     const r = await ns(d, `/orders?${q}`);
-    if (r.status === 404) break; // passou da última página
+    if (r.status === 404) break; // passou da última página (ou nenhum pedido)
+    if (!r.ok && todos && pag === 1 && (r.status === 400 || r.status === 422)) { todos = false; pag--; continue; }
     if (!r.ok) throw new Error(`Nuvemshop respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const lista = await r.json();
     if (!Array.isArray(lista) || !lista.length) break;
-    total += await importar(lista);
+    res.encontrados += lista.length;
+    const c = await importar(lista);
+    res.importados += c.importados; res.aguardando += c.aguardando; res.cancelados += c.cancelados;
     if (lista.length < 200) break;
   }
-  return total;
+  return res;
 }
 
 async function cadastrarWebhooks(d: Dados) {
@@ -266,7 +273,7 @@ Deno.serve(async (req) => {
   const configurado = !!(CLIENT_ID && CLIENT_SECRET);
 
   if (b.acao === "status") {
-    return json({ configurado, conectado: !!d.access_token, loja: d.store_id ?? null, conectadoEm: d.conectado_em ?? null, ultimaSync: d.ultima_sync ?? null, ultimoErro: d.ultimo_erro ?? null });
+    return json({ configurado, conectado: !!d.access_token, loja: d.store_id ?? null, conectadoEm: d.conectado_em ?? null, ultimaSync: d.ultima_sync ?? null, ultimoErro: d.ultimo_erro ?? null, ultimaBusca: d.ultima_busca ?? null });
   }
   if (b.acao === "conectar") {
     if (!configurado) return json({ code: "nao_configurado" }, 400);
@@ -279,11 +286,13 @@ Deno.serve(async (req) => {
     if (!d.access_token) return json({ code: "nao_conectado" }, 400);
     const desde = /^\d{4}-\d{2}-\d{2}$/.test(b.desde ?? "") ? b.desde : `${new Date().getFullYear()}-01-01`;
     try {
-      const total = await sincronizar(d, desde);
-      await salvar({ ...d, ultima_sync: new Date().toISOString(), ultimo_erro: undefined });
+      const r = await sincronizar(d, desde);
+      const quando = new Date().toISOString();
+      await salvar({ ...d, ultima_sync: quando, ultimo_erro: undefined, ultima_busca: { quando, desde, ...r } });
       try { await cadastrarWebhooks(d); } catch { /* segue */ }
-      return json({ total });
+      return json({ total: r.importados, ...r });
     } catch (e) {
+      console.error("sincronizar", e);
       await salvar({ ...d, ultimo_erro: String(e).slice(0, 300) });
       return json({ code: "falha", message: String(e).slice(0, 300) }, 502);
     }

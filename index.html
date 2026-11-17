@@ -1022,7 +1022,8 @@ function painelNuvem(){
     <div><button class="btn pri" id="nsconectar">Conectar loja Nuvemshop</button></div>`;
   else corpo = `<p style="margin:0"><span class="pill acc">Conectada</span> <span class="sub">Loja ${esc(n.loja)} · desde ${dt(n.conectadoEm)} · última busca ${dt(n.ultimaSync)}</span></p>
     <p class="sub" style="margin:0">Pedidos pagos entram sozinhos. Para trazer pedidos antigos, escolha a data e toque em Buscar.</p>
-    ${n.ultimoErro ? `<div class="banner warn">${esc(n.ultimoErro)}</div>` : ""}
+    ${n.ultimoErro ? `<div class="banner warn">A última busca falhou: ${esc(n.ultimoErro)}</div>` : ""}
+    ${n.ultimaBusca ? `<div class="note">Última busca (${dt(n.ultimaBusca.quando)}, pedidos desde ${dBR(n.ultimaBusca.desde)}): <b>${n.ultimaBusca.encontrados}</b> encontrados na loja · <b>${n.ultimaBusca.importados}</b> pagos importados${n.ultimaBusca.aguardando ? ` · ${n.ultimaBusca.aguardando} aguardando pagamento (não entram)` : ""}${n.ultimaBusca.cancelados ? ` · ${n.ultimaBusca.cancelados} cancelados` : ""}.</div>` : ""}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="date" id="nsdesde" value="${MES.slice(0,4)}-01-01" class="flt" style="border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--surface)">
       <button class="btn pri" id="nssync">Buscar pedidos</button><button class="btn danger" id="nsdesc">Desconectar</button></div>`;
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Loja Nuvemshop</h3>${corpo}</div>`;
@@ -1069,9 +1070,9 @@ function bindAjustes(){
   };
   const nsy = $("#nssync");
   if(nsy) nsy.onclick = async () => {
-    nsy.disabled = true; nsy.innerHTML = `<span class="spin"></span>Buscando…`;
+    nsy.disabled = true; nsy.innerHTML = `<span class="spin"></span>Buscando… pode levar até 2 minutos`;
     try{ const r = await window.seilleNuvem.chamar("sincronizar", {desde: $("#nsdesde").value}); toast(`${r.total} ${r.total===1?"pedido importado":"pedidos importados"} da Nuvemshop`); }
-    catch(e){ toast("A busca falhou. Veja o aviso em Ajustes."); }
+    catch(e){ toast("A busca falhou" + (e?.status ? " (erro " + e.status + ")" : "") + ". Veja o aviso em Ajustes."); }
     S.nuvem = null; render();
   };
   const nde = $("#nsdesc");
