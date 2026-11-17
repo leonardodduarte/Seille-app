@@ -18,7 +18,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
-const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Chave de servidor: formato antigo (service_role) ou novo (SUPABASE_SECRET_KEYS, um JSON com as chaves secretas)
+const chaveDoJson = (nome: string) => { try { const o = JSON.parse(Deno.env.get(nome) ?? "{}"); return String(o.default ?? Object.values(o)[0] ?? ""); } catch { return ""; } };
+const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || chaveDoJson("SUPABASE_SECRET_KEYS");
 const admin = createClient(SB_URL, SB_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 const CLIENT_ID = (Deno.env.get("NUVEMSHOP_CLIENT_ID") ?? "").trim();
