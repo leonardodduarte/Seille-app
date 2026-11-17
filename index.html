@@ -121,6 +121,9 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .orow select.st{flex:none}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
+.kclick{cursor:pointer}
+.kclick:hover{border-color:#BDBDBD}
+.modal.largo{max-width:960px}
 .filtros input{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px}
 .filtros select.flt{border-radius:999px;padding:9px 14px;background:var(--surface)}
 
@@ -854,6 +857,34 @@ function vPedidos(){
   <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros. Sobra = líquido − custo das peças − frete pago − impostos. ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
 }
 
+function openTaxasFretes(){
+  const gs = agrupaPedidos(S.vendas.filter(v => (v.data||"").slice(0,7) === MES)).filter(g => !g.cancelado)
+    .sort((a,b) => (b.f.data||"").localeCompare(a.f.data||"") || String(b.f.pedido||"").localeCompare(String(a.f.pedido||""), undefined, {numeric:true}));
+  const soma = fn => gs.reduce((a,g) => a + fn(g), 0);
+  const tot = {fc: soma(g=>g.frete), fp: soma(g=>g.fretePago), tx: soma(g=>g.taxas), ju: soma(g=>g.juros)};
+  const est = gs.some(g => !g.real);
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal largo">
+    <div><h2>Taxas e fretes de ${ymLabel(MES)}</h2><p class="sub" style="margin:4px 0 0">${gs.length} ${gs.length===1?"pedido":"pedidos"} · toque num pedido para ver a conta completa${est ? ` · ≈ = estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%, a loja não informou taxas e juros` : ""}</p></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="kpi"><span class="l">Frete pago</span><span class="v num">${brl(tot.fp)}</span><span class="s">cobrado das clientes ${brl(tot.fc)}</span></div>
+      <div class="kpi"><span class="l">Taxas</span><span class="v num">${brl(tot.tx)}</span></div>
+      <div class="kpi"><span class="l">Juros</span><span class="v num">${brl(tot.ju)}</span></div>
+      <div class="kpi"><span class="l">Total</span><span class="v num">${brl(tot.fp+tot.tx+tot.ju)}</span><span class="s">frete pago + taxas + juros</span></div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Pedido</th><th>Data</th><th class="n">Frete cobrado</th><th class="n">Frete pago</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Total</th></tr></thead>
+      <tbody>${gs.length ? gs.map(g => `<tr class="click" data-ped="${esc(g.k)}"><td>${g.f.pedido ? "#" + esc(g.f.pedido) : ""}<div class="sub">${esc(g.f.cliente||"")}</div></td><td>${dBR(g.f.data)}</td><td class="n">${brl(g.frete)}</td><td class="n">${brl(g.fretePago)}</td><td class="n">${g.real ? "" : "≈ "}${brl(g.taxas)}</td><td class="n">${brl(g.juros)}</td><td class="n"><b>${brl(g.fretePago+g.taxas+g.juros)}</b></td></tr>`).join("")
+        : emptyRow(7, "Nenhum pedido neste mês", "Os fretes e as taxas aparecem aqui conforme os pedidos entram.")}</tbody>
+      ${gs.length ? `<tfoot><tr><td colspan="2">Total</td><td class="n">${brl(tot.fc)}</td><td class="n">${brl(tot.fp)}</td><td class="n">${brl(tot.tx)}</td><td class="n">${brl(tot.ju)}</td><td class="n">${brl(tot.fp+tot.tx+tot.ju)}</td></tr></tfoot>` : ""}
+    </table></div>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+}
 function openPedido(k){
   const ls = S.vendas.filter(v => chavePed(v) === k); if(!ls.length) return;
   const g = resumoPed(k, ls), f = g.f;
@@ -955,7 +986,7 @@ function vCustos(){
     <div class="kpi"><span class="l">Fixos no mês</span><span class="v num">${brl(c.fixos)}</span></div>
     <div class="kpi"><span class="l">Funcionárias</span><span class="v num">${brl(c.equipe)}</span></div>
     <div class="kpi"><span class="l">Lançamento de coleções</span><span class="v num">${brl(c.colecao)}</span></div>
-    <div class="kpi"><span class="l">Peças vendidas, taxas e frete</span><span class="v num">${brl(c.cpv+c.taxas+c.frete)}</span><span class="s">Calculado pelos pedidos</span></div>
+    <div class="kpi kclick" data-taxfrete role="button" tabindex="0"><span class="l">Taxas e fretes <span aria-hidden="true">›</span></span><span class="v num">${brl(c.gateway+c.frete)}</span><span class="s">Frete pago, taxas e juros dos pedidos · toque para ver por pedido</span></div>
   </div>
   <div class="panel"><h3>Mapa de custos do mês</h3><div class="tw"><table>
     <thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">% do faturamento</th><th></th></tr></thead>
@@ -1519,6 +1550,7 @@ document.addEventListener("click", e => {
   const pf = e.target.closest("[data-pagf]"); if(pf){ PAGF = pf.dataset.pagf; render(); $("#pags")?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
   if(e.target.closest("select.st, select.flt, a")) return;
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
+  if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   const r = e.target.closest("[data-edit]");
   if(r){ const col = r.dataset.edit; const d = S[col].find(x => x.id === r.dataset.id); if(d) openForm(col, d); }
 });
