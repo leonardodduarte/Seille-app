@@ -361,21 +361,40 @@ function pecaCalc(p){
   const den = 1 - alvo - taxaPct();
   return {custo:c, taxas:tx, mc, mcPct: pr ? mc/pr : NaN, markup: c ? pr/c : NaN, sugerido: den > 0 ? c/den : NaN};
 }
+// Taxas e juros do pagamento: valor real do pedido quando conhecido; senão, estimativa da taxa do gateway
+const temTaxaReal = v => v.taxasPagas != null || v.jurosPagos != null;
+const feeGw = (v, receita) => temTaxaReal(v) ? num(v.taxasPagas) + num(v.jurosPagos) : receita*num(S.config.taxaGateway)/100;
 function vendaCalc(v){
   const receita = num(v.precoUnit)*num(v.qtd) - num(v.desconto) + num(v.freteCobrado);
   const cpv = num(v.custoUnit)*num(v.qtd);
-  const taxas = receita*taxaPct();
-  return {receita, cpv, taxas, frete:num(v.fretePago), lucro: receita - cpv - taxas - num(v.fretePago)};
+  const gw = feeGw(v, receita), imp = receita*num(S.config.imposto)/100;
+  const taxas = gw + imp;
+  return {receita, cpv, taxas, gw, imp, frete:num(v.fretePago), lucro: receita - cpv - taxas - num(v.fretePago)};
 }
+// Agrupa as linhas (uma por peça) em pedidos completos
+const chavePed = v => v.nuvemshopId ? "ns" + v.nuvemshopId : (v.pedido ? "p" + v.pedido : "id" + v.id);
+const ordLinha = v => { const m = /-(\d+)$/.exec(v.id||""); return m ? +m[1] : 0; };
+const nomePeca = v => { const n = v.produtoNome || "Peça"; return v.tamanho && !/\([^)]*\)\s*$/.test(n) ? `${n} (${v.tamanho})` : n; };
+function resumoPed(k, ls){
+  ls = ls.slice().sort((a,b) => ordLinha(a) - ordLinha(b));
+  const f = ls[0], soma = fn => ls.reduce((a,v) => a + fn(v), 0);
+  const pecas = soma(v => num(v.precoUnit)*num(v.qtd)), desconto = soma(v => num(v.desconto)), frete = soma(v => num(v.freteCobrado));
+  const total = pecas - desconto + frete, real = ls.some(temTaxaReal);
+  const taxas = real ? soma(v => num(v.taxasPagas)) : total*num(S.config.taxaGateway)/100, juros = real ? soma(v => num(v.jurosPagos)) : 0;
+  return {k, ls, f, pecas, desconto, frete, total, real, taxas, juros, liquido: total - taxas - juros,
+    custo: soma(v => num(v.custoUnit)*num(v.qtd)), fretePago: soma(v => num(v.fretePago)), imposto: total*num(S.config.imposto)/100,
+    sobra: soma(v => vendaCalc(v).lucro), qtd: soma(v => num(v.qtd)), status: f.status || "Recebido", cancelado: ls.every(v => !ativa(v))};
+}
+function agrupaPedidos(vs){ const m = new Map(); vs.forEach(v => { const k = chavePed(v); if(!m.has(k)) m.set(k, []); m.get(k).push(v); }); return [...m.entries()].map(([k,ls]) => resumoPed(k, ls)); }
 const ativa = v => v.status !== "Cancelado";
 const fixoNoMes = (f, ym) => (!f.inicio || f.inicio <= ym) && (!f.fim || f.fim >= ym);
 
 function calcMes(ym){
   const vs = S.vendas.filter(v => (v.data||"").slice(0,7) === ym && ativa(v));
-  let receita=0,cpv=0,taxas=0,frete=0,descontos=0,bruto=0,pecas=0;
+  let receita=0,cpv=0,taxas=0,frete=0,descontos=0,bruto=0,pecas=0,gwSoma=0;
   const pedidos = new Set();
-  for(const v of vs){ const c = vendaCalc(v); receita+=c.receita; cpv+=c.cpv; taxas+=c.taxas; frete+=c.frete; descontos+=num(v.desconto); bruto+=num(v.precoUnit)*num(v.qtd)+num(v.freteCobrado); pecas+=num(v.qtd); pedidos.add(v.pedido || v.id); }
-  const gateway = receita*num(S.config.taxaGateway)/100, impostoEst = receita*num(S.config.imposto)/100;
+  for(const v of vs){ const c = vendaCalc(v); receita+=c.receita; cpv+=c.cpv; taxas+=c.taxas; gwSoma+=c.gw; frete+=c.frete; descontos+=num(v.desconto); bruto+=num(v.precoUnit)*num(v.qtd)+num(v.freteCobrado); pecas+=num(v.qtd); pedidos.add(v.pedido || v.id); }
+  const gateway = gwSoma, gwEstimado = vs.some(v => !temTaxaReal(v)), impostoEst = receita*num(S.config.imposto)/100;
   const imps = S.impostos.filter(x => x.competencia === ym);
   const impostoPago = imps.reduce((a,x)=>a+num(x.valor),0), impostoReal = imps.length > 0;
   const imposto = impostoReal ? impostoPago : impostoEst;
@@ -392,7 +411,7 @@ function calcMes(ym){
   const nPed = pedidos.size;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   const mcPct = receita ? mc/receita : NaN;
-  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
+  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
     nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN,
     equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
 }
@@ -731,7 +750,7 @@ function vPainel(){
       <table class="dre"><tbody>
         ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big")}
         ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus")}
-        ${dreRow(`Taxas do gateway (${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -c.gateway, "minus")}
+        ${dreRow(`Taxas e juros do pagamento${c.gwEstimado && c.vs.length ? ` (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde falta o valor real)` : ""}`, -c.gateway, "minus")}
         ${dreRow(c.impostoReal ? `Impostos pagos (lançados em <a href="#impostos">Impostos</a>)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em <a href="#impostos">Impostos</a>)`, -c.imposto, "minus")}
         ${dreRow("Frete pago", -c.frete, "minus")}
         ${dreRow("Margem de contribuição", c.mc, "tot")}
@@ -780,42 +799,47 @@ let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "";
 const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"]};
 function vPedidos(){
-  const todos = S.vendas.filter(v => (v.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
-  const cnt = k => todos.filter(v => PED_GRUPO[k].includes(v.status||"Recebido")).length;
+  const todos = S.vendas.filter(v => (v.data||"").slice(0,7) === MES);
+  const grupos = agrupaPedidos(todos).sort((a,b) => (b.f.data||"").localeCompare(a.f.data||"") || String(b.f.pedido||"").localeCompare(String(a.f.pedido||""), undefined, {numeric:true}));
+  const noGrupo = (g,k) => PED_GRUPO[k].includes(g.status);
+  const cnt = k => grupos.filter(g => noGrupo(g,k)).length;
   const q = semAc(PEDQ);
-  const filtro = v => (!q || semAc([v.cliente, v.produtoNome, v.pedido, v.cidade].join(" ")).includes(q)) && (!PEDUF || (v.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !v.cupom : (v.cupom||"") === PEDCUP));
-  const vs = (PEDF === "todos" ? todos : todos.filter(v => PED_GRUPO[PEDF].includes(v.status||"Recebido"))).filter(filtro);
+  const filtro = g => (!q || g.ls.some(v => semAc([v.cliente, v.produtoNome, v.pedido, v.cidade].join(" ")).includes(q))) && (!PEDUF || (g.f.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !g.f.cupom : (g.f.cupom||"") === PEDCUP));
+  const gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF))).filter(filtro);
+  const at = gs.filter(g => !g.cancelado);
   const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
   const cups = [...new Set(todos.map(v => v.cupom).filter(Boolean))].sort();
-  const porPed = new Map(); vs.filter(ativa).forEach(v => { const k = v.pedido || v.id, c = vendaCalc(v); const o = porPed.get(k) || {uf:v.estado||"", cupom:v.cupom||"", receita:0, desconto:0, frete:0}; o.receita += c.receita; o.desconto += num(v.desconto); o.frete += num(v.freteCobrado); porPed.set(k, o); });
-  const agrupa = key => { const m = {}; porPed.forEach(o => { const k = o[key] || ""; (m[k] ||= {n:0, receita:0, desconto:0, frete:0}); m[k].n++; m[k].receita += o.receita; m[k].desconto += o.desconto; m[k].frete += o.frete; }); return Object.entries(m).sort((a,b)=>b[1].receita-a[1].receita); };
-  const pUF = agrupa("uf"), pCup = agrupa("cupom");
-  const nPed = porPed.size, totFrete = [...porPed.values()].reduce((a,o)=>a+o.frete,0), comCupom = [...porPed.values()].filter(o=>o.cupom).length;
-  let tr=0, tl=0; vs.filter(ativa).forEach(v=>{const c=vendaCalc(v); tr+=c.receita; tl+=c.lucro;});
+  const agrupa = key => { const m = {}; at.forEach(g => { const k = g.f[key] || ""; (m[k] ||= {n:0, receita:0, desconto:0, frete:0}); m[k].n++; m[k].receita += g.total; m[k].desconto += g.desconto; m[k].frete += g.frete; }); return Object.entries(m).sort((a,b)=>b[1].receita-a[1].receita); };
+  const pUF = agrupa("estado"), pCup = agrupa("cupom");
+  const nPed = at.length, soma = fn => at.reduce((a,g)=>a+fn(g),0);
+  const tr = soma(g=>g.total), tliq = soma(g=>g.liquido), tl = soma(g=>g.sobra), totFrete = soma(g=>g.frete), comCupom = at.filter(g=>g.f.cupom).length;
+  const algumEst = at.some(g => !g.real);
   const ini = s => (s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("") || "?";
-  const seg = [["and","Em andamento"],["fin","Finalizados"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${k==="todos"?todos.length:cnt(k)}</span></button>`).join("");
-  return `${S.produtos.length?"":`<div class="banner warn">Cadastre pelo menos uma peça em Mais → Peças antes de lançar pedidos. O custo vem da ficha técnica.</div>`}
+  const seg = [["and","Em andamento"],["fin","Finalizados"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${k==="todos"?grupos.length:cnt(k)}</span></button>`).join("");
+  return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   <div class="filtros">
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
     <select class="flt" id="peduf" aria-label="Estado"><option value="">Todos os estados</option>${ufs.map(u=>`<option${u===PEDUF?" selected":""}>${esc(u)}</option>`).join("")}</select>
     <select class="flt" id="pedcup" aria-label="Cupom"><option value="">Com e sem cupom</option><option value="__sem"${PEDCUP==="__sem"?" selected":""}>Sem cupom</option>${cups.map(c=>`<option${c===PEDCUP?" selected":""}>${esc(c)}</option>`).join("")}</select>
   </div>
-  <div class="seclbl">Pedidos de ${ymLabel(MES)}<span>${vs.length} ${vs.length===1?"item":"itens"} · ${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
-  ${vs.length ? `<div class="olist">${vs.map(v=>{const c=vendaCalc(v); return `<div class="ocard" data-edit="vendas" data-id="${v.id}">
-    <div class="av">${esc(ini(v.cliente || v.produtoNome))}</div>
-    <div class="ob"><b>${esc(v.cliente || v.produtoNome || "Pedido")}${exBadge(v)}</b>
-      <span class="s2">${[v.produtoNome, v.tamanho, num(v.qtd)>1?num(v.qtd)+" un.":"", dBR(v.data), v.pedido?"#"+v.pedido:""].filter(Boolean).map(esc).join(" · ")}</span>
-      ${v.cidade||v.estado||v.cupom||v.canal ? `<span class="s3">${[[v.cidade, v.estado].filter(Boolean).join(" – "), v.cupom ? "cupom " + v.cupom : "", num(v.freteCobrado) ? "frete " + brl(v.freteCobrado) : "", v.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
-      <div class="orow"><select class="st${PED_GRUPO.and.includes(v.status||"Recebido")?" on":""}" data-status="${v.id}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===v.status?" selected":""}>${s}</option>`).join("")}</select>
-      <span class="val">${brl(c.receita)}<div class="sub" style="font-weight:400;text-align:right">sobra ${brl(c.lucro)}</div></span></div></div>
-    <span class="chev">›</span></div>`}).join("")}</div>
-    <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· sobra ${brl(tl)}</span></span></div>`
+  <div class="seclbl">Pedidos de ${ymLabel(MES)}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
+  ${gs.length ? `<div class="olist">${gs.map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
+    <div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>
+    <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
+      <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
+      <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
+      ${f.cidade||f.estado||f.cupom||f.canal ? `<span class="s3">${[[f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
+      <div class="orow"><select class="st${PED_GRUPO.and.includes(g.status)?" on":""}" data-statusped="${esc(g.k)}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===g.status?" selected":""}>${s}</option>`).join("")}</select>
+      <span class="val">${brl(g.total)}<div class="sub" style="font-weight:400;text-align:right">líquido ${g.real ? "" : "≈ "}${brl(g.liquido)}</div></span></div></div>
+    <span class="chev">›</span></div>`; }).join("")}</div>
+    <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)} · sobra ${brl(tl)}</span></span></div>`
     : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Toque em Novo pedido para lançar uma venda."}</div>`}
   ${nPed ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
     <div class="kpi"><span class="l">Ticket médio</span><span class="v num">${brl(tr/nPed)}</span><span class="s">${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
     <div class="kpi"><span class="l">Com cupom</span><span class="v num">${pct(comCupom/nPed,0)}</span><span class="s">${comCupom} de ${nPed} pedidos</span></div>
     <div class="kpi"><span class="l">Frete cobrado</span><span class="v num">${brl(totFrete)}</span><span class="s">média ${brl(totFrete/nPed)} por pedido</span></div>
+    <div class="kpi"><span class="l">Taxas e juros</span><span class="v num">${brl(tr - tliq)}</span><span class="s">${algumEst ? "parte estimada" : "valores da loja"} · ${tr ? pct((tr-tliq)/tr) : "—"} do total</span></div>
   </div>
   <div class="grid2">
     <div class="panel"><h3>Por estado</h3><div class="tw"><table>
@@ -827,7 +851,67 @@ function vPedidos(){
       <tbody>${pCup.map(([k,o]) => `<tr><td>${k ? esc(k) : `<span class="sub">Sem cupom</span>`}</td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.receita)}</td></tr>`).join("")}</tbody>
     </table></div></div>
   </div>` : ""}
-  <p class="sub">Sobra = receita − custo da peça − taxas e impostos − frete pago. É a margem de contribuição do pedido, antes de anúncios e custos fixos.</p>`;
+  <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros. Sobra = líquido − custo das peças − frete pago − impostos. ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
+}
+
+function openPedido(k){
+  const ls = S.vendas.filter(v => chavePed(v) === k); if(!ls.length) return;
+  const g = resumoPed(k, ls), f = g.f;
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  const L = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td></tr>`;
+  const val = x => x == null ? "" : String(Math.round(num(x)*100)/100);
+  modalEl.innerHTML = `<form class="modal" novalidate>
+    <div><h2>Pedido ${f.pedido ? "#" + esc(f.pedido) : ""}</h2>
+      <p class="sub" style="margin:4px 0 0">${[f.cliente, dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – "), f.pagamento, f.parcelas ? f.parcelas + "x" : "", f.canal].filter(Boolean).map(esc).join(" · ")}</p></div>
+    <div class="tw"><table>
+      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n">Custo</th></tr></thead>
+      <tbody>${g.ls.map(v => `<tr class="click" data-item="${esc(v.id)}"><td>${esc(nomePeca(v))}${v.produtoId ? "" : ` <span class="pill warn">sem ficha técnica</span>`}</td><td class="n">${num(v.qtd)}</td><td class="n">${brl(num(v.precoUnit)*num(v.qtd))}</td><td class="n">${brl(num(v.custoUnit)*num(v.qtd))}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <table class="dre"><tbody>
+      ${L(`Valor das peças (${g.qtd} ${g.qtd===1?"unidade":"unidades"})`, g.pecas)}
+      ${L(`Desconto${f.cupom ? " (cupom " + esc(f.cupom) + ")" : ""}`, -g.desconto, "minus")}
+      ${L("Frete cobrado da cliente", g.frete, "minus")}
+      ${L("Total pago pela cliente", g.total, "tot")}
+      ${L(g.real ? "Taxas" : `Taxas (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -g.taxas, "minus")}
+      ${L("Juros", -g.juros, "minus")}
+      ${L("Total líquido", g.liquido, "tot big")}
+      ${L("Custo das peças", -g.custo, "minus")}
+      ${L("Frete pago pela Seille", -g.fretePago, "minus")}
+      ${L(`Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%)`, -g.imposto, "minus")}
+      ${L("Sobra do pedido", g.sobra, "tot")}
+    </tbody></table>
+    <div class="fgrid">
+      <div class="f"><label for="pd_tx">Taxas (R$)</label><input id="pd_tx" name="taxas" type="number" step="0.01" min="0" inputmode="decimal" value="${g.real ? val(g.taxas) : ""}" placeholder="${val(g.taxas)} (estimativa)"><span class="h">Como aparece em Pagamento na Nuvemshop</span></div>
+      <div class="f"><label for="pd_ju">Juros (R$)</label><input id="pd_ju" name="juros" type="number" step="0.01" min="0" inputmode="decimal" value="${g.real ? val(g.juros) : ""}"><span class="h">Juros do parcelamento pagos pela Seille</span></div>
+      <div class="f"><label for="pd_fp">Frete pago pela Seille (R$)</label><input id="pd_fp" name="fretePago" type="number" step="0.01" min="0" inputmode="decimal" value="${val(g.fretePago)}"></div>
+      <div class="f"><label for="pd_st">Status</label><select id="pd_st" name="status">${STATUS.map(s=>`<option${s===g.status?" selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <p class="sub" style="margin:0">Toque numa peça para editar custo, tamanho ou ligá-la à ficha técnica. Deixe Taxas e Juros vazios para usar a estimativa.</p>
+    <div class="err" id="ferr" hidden></div>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button><button type="submit" class="btn pri">Salvar</button></div>
+  </form>`;
+  document.body.appendChild(modalEl);
+  const form = $("form", modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => {
+    if(e.target === modalEl){ closeModal(); return; }
+    const it = e.target.closest("[data-item]"); if(it){ const v = S.vendas.find(x => x.id === it.dataset.item); if(v) openForm("vendas", v); }
+  });
+  form.addEventListener("submit", async e => {
+    e.preventDefault(); if(!S.db) return;
+    const btn = $("button[type=submit]", form); btn.disabled = true; btn.textContent = "Salvando…";
+    const tx = form.taxas.value.trim(), ju = form.juros.value.trim(), manual = tx !== "" || ju !== "";
+    try{
+      for(const [i, v] of g.ls.entries()){
+        const body = {...v, status: form.status.value, fretePago: i === 0 ? num(form.fretePago.value) : 0}; delete body.id;
+        if(manual){ body.taxasPagas = i === 0 ? num(tx) : 0; body.jurosPagos = i === 0 ? num(ju) : 0; body.taxaManual = true; }
+        else { delete body.taxasPagas; delete body.jurosPagos; delete body.taxaManual; }
+        await S.db.collection("vendas").doc(v.id).set(body);
+      }
+      closeModal(); toast("Pedido atualizado");
+    }catch(err){ const el = $("#ferr", modalEl); el.hidden = false; el.textContent = "Não foi possível salvar. Tente de novo."; btn.disabled = false; btn.textContent = "Salvar"; }
+  });
 }
 
 function vPecas(){
@@ -1023,7 +1107,8 @@ function painelNuvem(){
   else corpo = `<p style="margin:0"><span class="pill acc">Conectada</span> <span class="sub">Loja ${esc(n.loja)} · desde ${dt(n.conectadoEm)} · última busca ${dt(n.ultimaSync)}</span></p>
     <p class="sub" style="margin:0">Pedidos pagos entram sozinhos. Para trazer pedidos antigos, escolha a data e toque em Buscar.</p>
     ${n.ultimoErro ? `<div class="banner warn">A última busca falhou: ${esc(n.ultimoErro)}</div>` : ""}
-    ${n.ultimaBusca ? `<div class="note">Última busca (${dt(n.ultimaBusca.quando)}, pedidos desde ${dBR(n.ultimaBusca.desde)}): <b>${n.ultimaBusca.encontrados}</b> encontrados na loja · <b>${n.ultimaBusca.importados}</b> pagos importados${n.ultimaBusca.aguardando ? ` · ${n.ultimaBusca.aguardando} aguardando pagamento (não entram)` : ""}${n.ultimaBusca.cancelados ? ` · ${n.ultimaBusca.cancelados} cancelados` : ""}.</div>` : ""}
+    ${n.ultimaBusca ? `<div class="note">Última busca (${dt(n.ultimaBusca.quando)}, pedidos desde ${dBR(n.ultimaBusca.desde)}): <b>${n.ultimaBusca.encontrados}</b> encontrados na loja · <b>${n.ultimaBusca.importados}</b> pagos importados${n.ultimaBusca.aguardando ? ` · ${n.ultimaBusca.aguardando} aguardando pagamento (não entram)` : ""}${n.ultimaBusca.cancelados ? ` · ${n.ultimaBusca.cancelados} cancelados` : ""}.${n.ultimaBusca.campos ? ` Taxas e juros vieram da loja em <b>${n.ultimaBusca.comTaxas||0}</b> ${n.ultimaBusca.comTaxas===1?"pedido":"pedidos"}${n.ultimaBusca.comTaxas ? "" : " (a loja não enviou esses valores; o app usa a estimativa e você pode digitar o valor real no pedido)"}.` : ""}</div>
+    ${n.ultimaBusca.campos?.length ? `<details class="sub"><summary>Campos de pagamento enviados pela loja</summary><p style="word-break:break-word">${esc(n.ultimaBusca.campos.join(" · "))}</p></details>` : ""}` : ""}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="date" id="nsdesde" value="${MES.slice(0,4)}-01-01" class="flt" style="border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--surface)">
       <button class="btn pri" id="nssync">Buscar pedidos</button><button class="btn danger" id="nsdesc">Desconectar</button></div>`;
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Loja Nuvemshop</h3>${corpo}</div>`;
@@ -1433,6 +1518,7 @@ document.addEventListener("click", e => {
   const cs = e.target.closest("[data-colsel]"); if(cs){ COLSEL = cs.dataset.colsel; render(); return; }
   const pf = e.target.closest("[data-pagf]"); if(pf){ PAGF = pf.dataset.pagf; render(); $("#pags")?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
   if(e.target.closest("select.st, select.flt, a")) return;
+  const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   const r = e.target.closest("[data-edit]");
   if(r){ const col = r.dataset.edit; const d = S[col].find(x => x.id === r.dataset.id); if(d) openForm(col, d); }
 });
@@ -1440,6 +1526,13 @@ document.addEventListener("change", async e => {
   if(e.target.id === "pagf"){ PAGF = e.target.value; render(); return; }
   if(e.target.id === "peduf"){ PEDUF = e.target.value; render(); return; }
   if(e.target.id === "pedcup"){ PEDCUP = e.target.value; render(); return; }
+  const sp = e.target.closest("select[data-statusped]");
+  if(sp){
+    const ls = S.vendas.filter(v => chavePed(v) === sp.dataset.statusped); if(!S.db) return;
+    try{ for(const v of ls){ const body = {...v, status:sp.value}; delete body.id; await S.db.collection("vendas").doc(v.id).set(body); } toast("Status: " + sp.value); }
+    catch(err){ toast("Não foi possível mudar o status"); render(); }
+    return;
+  }
   const s = e.target.closest("select.st"); if(!s) return;
   const v = S.vendas.find(x => x.id === s.dataset.status); if(!v || !S.db) return;
   const body = {...v, status:s.value}; delete body.id;

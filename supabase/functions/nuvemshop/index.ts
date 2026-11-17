@@ -51,7 +51,7 @@ const pagina = (titulo: string, texto: string, status = 200) =>
 type Dados = {
   store_id?: number; access_token?: string; scope?: string; conectado_em?: string; ultima_sync?: string;
   state?: string; state_exp?: number; voltar?: string; ultimo_erro?: string;
-  ultima_busca?: { quando: string; desde: string; encontrados: number; importados: number; aguardando: number; cancelados: number };
+  ultima_busca?: { quando: string; desde: string; encontrados: number; importados: number; aguardando: number; cancelados: number; comTaxas?: number; campos?: string[] };
 };
 async function ler(): Promise<Dados> {
   const { data } = await admin.from("integracoes").select("dados").eq("nome", "nuvemshop").maybeSingle();
@@ -96,9 +96,33 @@ const variante = (p: any) => (Array.isArray(p?.variant_values) ? p.variant_value
 const custoPeca = (p: any) => n(p.tecidoMetros) * n(p.tecidoPrecoMetro) + n(p.aviamentos) + n(p.costura) + n(p.embalagem) + n(p.outros);
 const EM_ABERTO = ["Recebido", "Em produção", "Pronto"];
 
-type Contagem = { importados: number; aguardando: number; cancelados: number };
+// Taxas e juros do pagamento, quando a Nuvemshop informa no pedido (procura nos dados do pedido e do pagamento)
+const RE_TAXA = /(^|_)(fee|fees|gateway_fee|transaction_fee|payment_fee|processing_fee|commission)$/i;
+const RE_JUROS = /(^|_)(interest|interests|installment_interest|financing_cost)$/i;
+const ehNumero = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()));
+function somaCampos(o: any, re: RegExp): number | null {
+  let tot = 0, achou = false;
+  const olhar = (obj: any) => {
+    if (!obj || typeof obj !== "object") return;
+    for (const [k, v] of Object.entries(obj)) {
+      if (re.test(k) && ehNumero(v)) { tot += Math.abs(n(v)); achou = true; }
+      else if (re.test(k) && v && typeof v === "object" && ehNumero((v as any).value ?? (v as any).amount)) { tot += Math.abs(n((v as any).value ?? (v as any).amount)); achou = true; }
+    }
+  };
+  olhar(o); olhar(o?.payment_details); olhar(o?.payment); olhar(o?.payment_info);
+  return achou ? r2(tot) : null;
+}
+// Lista (sem valores pessoais) os campos de pagamento que a loja envia, para conferir de onde vêm taxas e juros
+function camposPagamento(o: any): string[] {
+  const out = new Set<string>();
+  const re = /pay|fee|interest|install|gateway|net|total|discount|shipping_cost|subtotal/i;
+  for (const [k, v] of Object.entries(o ?? {})) if (re.test(k)) out.add(k + (v && typeof v === "object" ? "{" + Object.keys(v as object).join(",") + "}" : ""));
+  return [...out].sort();
+}
+
+type Contagem = { importados: number; aguardando: number; cancelados: number; comTaxas: number; campos: string[] };
 async function importar(pedidos: any[]): Promise<Contagem> {
-  const cont: Contagem = { importados: 0, aguardando: 0, cancelados: 0 };
+  const cont: Contagem = { importados: 0, aguardando: 0, cancelados: 0, comTaxas: 0, campos: camposPagamento(pedidos[0]) };
   if (!pedidos.length) return cont;
   const { data: prods } = await admin.from("docs").select("id,data").eq("col", "produtos");
   const produtos = (prods ?? []).map((r: any) => ({ id: r.id, ...r.data, chave: semAcento(r.data?.nome ?? "") }));
@@ -128,6 +152,14 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     const freteCobrado = n(o.shipping_cost_customer);
     const fretePago = o.shipping_cost_owner != null && n(o.shipping_cost_owner) > 0 ? n(o.shipping_cost_owner) : freteCobrado;
     const desconto = Math.max(0, r2(subtotal + freteCobrado - n(o.total)));
+    // desconto dividido entre as peças, proporcional ao valor de cada uma (a última fica com o arredondamento)
+    let descRestante = desconto;
+    const descDe = (p: any, i: number) => {
+      if (i === itens.length - 1) return r2(descRestante);
+      const d = subtotal ? r2(desconto * n(p.price) * n(p.quantity) / subtotal) : 0; descRestante = r2(descRestante - d); return d;
+    };
+    const taxasApi = somaCampos(o, RE_TAXA), jurosApi = somaCampos(o, RE_JUROS);
+    const parcelas = n(o.payment_details?.installments) || null;
     const cupom = (Array.isArray(o.coupon) ? o.coupon : []).map((c: any) => c?.code).filter(Boolean).join(", ");
     const end = o.shipping_address ?? {};
     const enviado = ["shipped", "fulfilled", "delivered"].includes(o.shipping_status);
@@ -136,6 +168,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
       cliente: o.customer?.name || o.contact_name || o.billing_name || "",
       cidade: end.city || o.billing_city || "", estado: paraUF(end.province || o.billing_province),
       cupom, canal: "Nuvemshop", nuvemshopId: String(o.id), pagamento: o.gateway_name || o.gateway || "",
+      ...(parcelas ? { parcelas } : {}),
     };
 
     itens.forEach((p, i) => {
@@ -147,17 +180,23 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         produtoId: antes?.produtoId || prod?.id || "",
         produtoNome: antes?.produtoId ? antes.produtoNome : (prod?.nome ?? nomeProduto(p)),
         tamanho: variante(p), qtd: n(p.quantity) || 1, precoUnit: r2(n(p.price)),
-        desconto: i === 0 ? desconto : 0, freteCobrado: i === 0 ? freteCobrado : 0,
+        desconto: descDe(p, i), freteCobrado: i === 0 ? freteCobrado : 0,
         fretePago: antes ? n(antes.fretePago) : (i === 0 ? fretePago : 0),
         custoUnit: antes ? n(antes.custoUnit) : (prod ? r2(custoPeca(prod)) : 0),
         origem: antes?.origem || "Loja virtual (sem origem)",
         status: cancelado ? "Cancelado" : antes ? (enviado && EM_ABERTO.includes(antes.status) ? "Enviado" : antes.status) : (enviado ? "Enviado" : "Recebido"),
         criadoEm: antes?.criadoEm || new Date().toISOString(),
       };
+      if (taxasApi != null || jurosApi != null) {          // valores da loja
+        novo.taxasPagas = i === 0 ? (taxasApi ?? 0) : 0; novo.jurosPagos = i === 0 ? (jurosApi ?? 0) : 0;
+      } else if (antes && (antes.taxasPagas != null || antes.jurosPagos != null)) { // digitados no app
+        novo.taxasPagas = antes.taxasPagas ?? 0; novo.jurosPagos = antes.jurosPagos ?? 0; if (antes.taxaManual) novo.taxaManual = true;
+      }
       gravar.push({ col: "vendas", id, data: novo, updated_at: new Date().toISOString() });
     });
     doPedido.forEach(([id]) => { const k = Number(id.split("-").pop()); if (k >= itens.length) apagar.push(id); });
     if (cancelado) cont.cancelados++; else cont.importados++;
+    if (taxasApi != null || jurosApi != null) cont.comTaxas++;
   }
   for (let i = 0; i < gravar.length; i += 200) {
     const { error } = await admin.from("docs").upsert(gravar.slice(i, i + 200), { onConflict: "col,id" });
@@ -168,7 +207,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
 }
 
 async function sincronizar(d: Dados, desde: string) {
-  const res = { encontrados: 0, importados: 0, aguardando: 0, cancelados: 0 };
+  const res = { encontrados: 0, importados: 0, aguardando: 0, cancelados: 0, comTaxas: 0, campos: [] as string[] };
   let todos = true; // pede pedidos de qualquer situação, inclusive arquivados
   for (let pag = 1; pag <= 100; pag++) {
     const q = new URLSearchParams({ per_page: "200", page: String(pag), created_at_min: `${desde}T00:00:00-03:00` });
@@ -181,7 +220,8 @@ async function sincronizar(d: Dados, desde: string) {
     if (!Array.isArray(lista) || !lista.length) break;
     res.encontrados += lista.length;
     const c = await importar(lista);
-    res.importados += c.importados; res.aguardando += c.aguardando; res.cancelados += c.cancelados;
+    res.importados += c.importados; res.aguardando += c.aguardando; res.cancelados += c.cancelados; res.comTaxas += c.comTaxas;
+    if (!res.campos.length) res.campos = c.campos;
     if (lista.length < 200) break;
   }
   return res;
