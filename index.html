@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1A1D26" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png?v=2">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Seille">
@@ -214,7 +214,7 @@ select.flt{border:1px solid var(--line);background:var(--surface);border-radius:
     </div>
     <nav class="tabs" id="tabs">
       <a href="#painel">Painel</a>
-      <a href="#leitor">Ler comprovantes</a>
+      <a href="#leitor">Adicionar documentos</a>
       <a href="#pedidos">Pedidos</a>
       <a href="#pecas">Peças</a>
       <a href="#custos">Custos</a>
@@ -730,7 +730,7 @@ function vCustos(){
       return `<tr><td>${esc(k)}</td><td class="n">${v ? brl(v) : `<span class="sub">não lançado</span>`}</td><td class="n sub">${v && c.receita ? pct(v/c.receita) : ""}</td><td class="n">${act}</td></tr>`;
     }).join("");
   }).join("");
-  return `<div class="head"><div><h2>Custos de ${ymLabel(MES)}</h2><p>O mapa abaixo lista os custos de um negócio como a Seille. O que ainda não foi lançado aparece em cinza. O custo de cada peça vendida, as taxas e o frete entram pelos pedidos.</p></div><a class="btn pri" href="#leitor" style="text-decoration:none">Ler comprovantes</a></div>
+  return `<div class="head"><div><h2>Custos de ${ymLabel(MES)}</h2><p>O mapa abaixo lista os custos de um negócio como a Seille. O que ainda não foi lançado aparece em cinza. O custo de cada peça vendida, as taxas e o frete entram pelos pedidos.</p></div><a class="btn pri" href="#leitor" style="text-decoration:none">Adicionar documentos</a></div>
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="kpi"><span class="l">Custos operacionais</span><span class="v num">${brl(total)}</span><span class="s">Fixos, variáveis, equipe e anúncios</span></div>
     <div class="kpi"><span class="l">Fixos no mês</span><span class="v num">${brl(c.fixos)}</span></div>
@@ -771,7 +771,7 @@ function vFuncionarias(){
   const ps = (sel ? S.pagamentos.filter(p=>p.funcionariaId===PAGF) : S.pagamentos.filter(p=>pagYm(p)===MES)).slice().sort((a,b)=>(b.data||"").localeCompare(a.data||""));
   const semComp = ps.filter(p=>!(p.anexos||[]).length).length;
   return `<div class="head"><div><h2>Funcionárias</h2><p>Cadastro da equipe e todos os pagamentos feitos a ela, com os comprovantes anexados.</p></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler comprovantes</a><button class="btn" data-new="funcionarias">Nova funcionária</button><button class="btn pri" data-new="pagamentos" ${fs.length?"":"disabled"}>Lançar pagamento</button></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Adicionar documentos</a><button class="btn" data-new="funcionarias">Nova funcionária</button><button class="btn pri" data-new="pagamentos" ${fs.length?"":"disabled"}>Lançar pagamento</button></div></div>
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="kpi"><span class="l">Pago em ${MESES[+MES.slice(5)-1]}</span><span class="v num">${brl(c.equipe)}</span><span class="s">Salários, extras e encargos; entra no lucro</span></div>
     <div class="kpi"><span class="l">Produção por peça</span><span class="v num">${brl(c.porPeca)}</span><span class="s">Já contado no custo das peças</span></div>
@@ -816,7 +816,7 @@ function vImpostos(){
   const porTipo = {}; lista.forEach(x => porTipo[x.tipo||"Outro imposto"] = (porTipo[x.tipo||"Outro imposto"]||0) + num(x.valor));
   const ateMes = linhas.filter(l => l.ym <= MES), semLanc = ateMes.filter(l => !l.real && l.receita > 0);
   return `<div class="head"><div><h2>Impostos de ${ano}</h2><p>Lance o valor de cada guia paga (DAS, ICMS, ISS…) no mês e ano a que ela se refere. Quando um mês tem imposto lançado, o Painel usa o valor real no lugar da estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%.</p></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler guia ou comprovante</a><button class="btn pri" data-new="impostos">Lançar imposto</button></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Adicionar documentos</a><button class="btn pri" data-new="impostos">Lançar imposto</button></div></div>
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="kpi"><span class="l">Pago em ${ymLabel(MES)}</span><span class="v num">${doMes.length ? brl(pagoMes) : "—"}</span><span class="s">${doMes.length ? (cm.receita ? pct(pagoMes/cm.receita) + " do faturamento do mês" : "Sem faturamento lançado no mês") : "Nenhum imposto lançado; estimativa " + brl(cm.impostoEst)}</span></div>
     <div class="kpi"><span class="l">Pago em ${ano}</span><span class="v num">${brl(totPago)}</span><span class="s">${lista.length} ${lista.length===1?"guia lançada":"guias lançadas"}</span></div>
@@ -1135,7 +1135,7 @@ async function confirmaLeitor(id, btn){
 }
 function vLeitor(){
   const nP = S.fila.filter(x=>x.status==="pronto").length;
-  return `<div class="head"><div><h2>Ler comprovantes</h2><p>Envie comprovantes de Pix, holerites, contas de luz, internet, aluguel, condomínio, guias, faturas de anúncio e recibos de fotógrafo, modelos e demais custos de coleção. O Claude identifica o tipo, o valor, a data e para quem foi pago, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
+  return `<div class="head"><div><h2>Adicionar documentos</h2><p>Envie comprovantes de Pix, holerites, contas de luz, internet, aluguel, condomínio, guias, faturas de anúncio e recibos de fotógrafo, modelos e demais custos de coleção. O Claude identifica o tipo, o valor, a data e para quem foi pago, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
   ${S.sample === null ? `<div class="banner warn">A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante.</div>` : ""}
   <label class="drop" id="drop" for="upl"><b>Solte os arquivos aqui</b><span class="sub">ou toque para escolher fotos e PDFs. Pode enviar vários de uma vez.</span><span class="btn pri">Escolher arquivos</span><input type="file" id="upl" multiple accept="image/*,application/pdf"></label>
   ${S.fila.length ? `<div class="fila">${S.fila.map(cardLeitor).join("")}</div>` : `<div class="panel empty"><b>Nenhum documento na fila</b>Cada arquivo enviado aparece aqui com a sugestão de lançamento: funcionária, categoria, valor, data e mês de referência.</div>`}
@@ -1214,7 +1214,7 @@ function vColecoes(){
     </div>`;
   }
   return `<div class="head"><div><h2>Coleções</h2><p>Orçamento e custos de cada lançamento: fotógrafo, vídeo maker, modelos, maquiagem, locação do espaço, transporte, alimentação e o que mais o ensaio pedir. Os custos entram no resultado do mês em que foram pagos.</p></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler comprovantes</a><button class="btn pri" data-new="colecoes">Nova coleção</button></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Adicionar documentos</a><button class="btn pri" data-new="colecoes">Nova coleção</button></div></div>
   ${cols.length ? `<div class="cgrid">${cards}</div>${det}` : `<div class="panel empty"><b>Nenhuma coleção cadastrada</b>Crie a primeira coleção para planejar o orçamento do lançamento e lançar os custos do ensaio.</div>`}
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }

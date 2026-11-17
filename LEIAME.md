@@ -32,7 +32,7 @@ App de gestão da Seille: pedidos sob demanda, ficha técnica das peças, custos
 3. No Supabase: **Edge Functions** → **Secrets** → **Add new secret**. Nome `ANTHROPIC_API_KEY`, valor: a chave copiada.
 4. **Edge Functions** → **Deploy a new function** → **Via Editor**. Nome: `ler-comprovante`. Apague o exemplo, cole o conteúdo de `supabase/functions/ler-comprovante/index.ts` e clique em **Deploy**.
 
-Sem este passo o app funciona normalmente; só a aba **Ler comprovantes** fica indisponível.
+Sem este passo o app funciona normalmente; só a aba **Adicionar documentos** fica indisponível.
 
 ## 3. Publicar o app (GitHub Pages)
 
