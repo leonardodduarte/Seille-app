@@ -617,9 +617,11 @@ function openForm(col, doc, preset){
       o.anexos = keep;
     }
     try{
+      let novoId = doc?.id;
       if(doc){ const body = {...doc, ...o}; delete body.id; await S.db.collection(col).doc(doc.id).set(body); }
-      else { o.criadoEm = new Date().toISOString(); await S.db.collection(col).add(o); }
+      else { o.criadoEm = new Date().toISOString(); novoId = (await S.db.collection(col).add(o)).id; }
       closeModal(); toast(doc ? "Alterações salvas" : "Adicionado");
+      if(col === "produtos" && novoId) ligaVendas(novoId, o).then(n => { if(n) toast(`${n} ${n===1?"pedido ligado":"pedidos ligados"} a esta peça, com o custo da ficha técnica`); }).catch(()=>{});
       if(S.assets) for(const a of removidos) S.assets.delete(a.id).catch(()=>{});
     }catch(err){ showErr(err); btn.disabled = false; }
   });
@@ -652,6 +654,19 @@ function saudacao(){
   const ano = MES.slice(0,4);
   const fin = new Set(S.vendas.filter(v => ["Enviado","Entregue"].includes(v.status) && (v.data||"").startsWith(ano)).map(v => v.pedido || v.id)).size;
   return `<div class="hero"><h1>Olá, ${esc(e)}!</h1><p>${emProd} ${emProd===1?"pedido":"pedidos"} em produção · ${fin} ${fin===1?"finalizado":"finalizados"} em ${ano}</p></div>`;
+}
+// Pedidos que vieram da loja sem peça cadastrada: ao cadastrar a peça com o mesmo nome, liga e preenche o custo
+async function ligaVendas(id, p){
+  const chave = semAc(p.nome); if(!chave || !S.db) return 0;
+  const base = nome => semAc(String(nome||"").replace(/\s*\([^)]*\)\s*$/, ""));
+  const alvo = S.vendas.filter(v => (v.produtoId === id && !num(v.custoUnit)) || (!v.produtoId && (base(v.produtoNome) === chave || base(v.produtoNome).startsWith(chave))));
+  let n = 0;
+  for(const v of alvo){
+    const body = {...v, produtoId:id, produtoNome:p.nome}; delete body.id;
+    if(!num(v.custoUnit)) body.custoUnit = Math.round(custoPeca(p)*100)/100;
+    await S.db.collection("vendas").doc(v.id).set(body); n++;
+  }
+  return n;
 }
 function emptyRow(cols, title, hint){ return `<tr><td colspan="${cols}"><div class="empty"><b>${title}</b>${hint}</div></td></tr>`; }
 
