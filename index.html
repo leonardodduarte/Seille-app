@@ -122,6 +122,11 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.perrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.perrow label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.perrow input{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;min-width:0}
+.perrow .atalhos{display:flex;gap:6px}
+.perrow .atalhos .btn{padding:7px 12px;font-size:13px}
 .ufs{display:flex;flex-direction:column;gap:4px}
 .uf{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:10px 8px;border-radius:14px;cursor:pointer}
 .uf:hover,.uf.on{background:var(--raised)}
@@ -368,7 +373,12 @@ let PAGF = "";
 let MES = today().slice(0,7);
 let ANO = false; // true = "Ano todo" (Painel e Pedidos mostram o ano inteiro)
 const ANO_VIEWS = ["painel","pedidos"];
-const anoTodo = () => ANO && ANO_VIEWS.includes(curView());
+let PER = null; // {de, ate}: período de tal dia até tal dia (Painel e Pedidos)
+const periodo = () => PER && ANO_VIEWS.includes(curView()) ? PER : null;
+const anoTodo = () => ANO && !PER && ANO_VIEWS.includes(curView());
+// A data entra no recorte escolhido (mês, ano todo ou período)?
+const noRecorte = d => { const p = periodo(); if(p) return !!d && d >= p.de && d <= p.ate; if(anoTodo()) return (d||"").startsWith(MES.slice(0,4)); return (d||"").slice(0,7) === MES; };
+const rotuloRecorte = () => { const p = periodo(); return p ? `${dBR(p.de)} a ${dBR(p.ate)}` : anoTodo() ? MES.slice(0,4) : ymLabel(MES); };
 
 const custoPeca = p => num(p.tecidoMetros)*num(p.tecidoPrecoMetro) + num(p.aviamentos) + num(p.costura) + num(p.embalagem) + num(p.outros);
 const taxaPct = () => (num(S.config.taxaGateway) + num(S.config.imposto))/100;
@@ -407,6 +417,39 @@ function agrupaPedidos(vs){ const m = new Map(); vs.forEach(v => { const k = cha
 const ativa = v => v.status !== "Cancelado";
 const fixoNoMes = (f, ym) => (!f.inicio || f.inicio <= ym) && (!f.fim || f.fim >= ym);
 
+// Resultado de um período qualquer: vendas, anúncios e despesas pela data; custos fixos proporcionais aos dias;
+// imposto pago do mês proporcional à parte do faturamento do mês que caiu no período
+function calcPeriodo(de, ate){
+  const dentro = d => !!d && d >= de && d <= ate;
+  const vs = S.vendas.filter(v => dentro(v.data) && ativa(v));
+  let receita=0,cpv=0,frete=0,descontos=0,bruto=0,pecas=0,gw=0;
+  const pedidos = new Set();
+  for(const v of vs){ const c = vendaCalc(v); receita+=c.receita; cpv+=c.cpv; gw+=c.gw; frete+=c.frete; descontos+=num(v.desconto); bruto+=num(v.precoUnit)*num(v.qtd)+num(v.freteCobrado); pecas+=num(v.qtd); pedidos.add(v.pedido || v.id); }
+  const meses = []; for(let ym = de.slice(0,7); ym <= ate.slice(0,7); ym = addYm(ym,1)) meses.push(ym);
+  const diasMes = ym => new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+  const fracao = ym => { const ini = ym + "-01", fim = ym + "-" + String(diasMes(ym)).padStart(2,"0"); const a = de > ini ? de : ini, b = ate < fim ? ate : fim; return Math.max(0, daysBetween(a,b) + 1) / diasMes(ym); };
+  const receitaDe = filtro => S.vendas.filter(v => ativa(v) && filtro(v)).reduce((a,v) => a + vendaCalc(v).receita, 0);
+  let imposto = 0, impostoPago = 0, impostoReal = false, impostoEstMeses = false;
+  for(const ym of meses){
+    const rIn = receitaDe(v => (v.data||"").slice(0,7) === ym && dentro(v.data));
+    const imps = S.impostos.filter(x => x.competencia === ym);
+    if(imps.length){ const rMes = receitaDe(v => (v.data||"").slice(0,7) === ym); const pago = imps.reduce((a,x)=>a+num(x.valor),0) * (rMes ? rIn/rMes : fracao(ym)); imposto += pago; impostoPago += pago; impostoReal = true; }
+    else if(rIn){ imposto += rIn*num(S.config.imposto)/100; impostoEstMeses = true; }
+  }
+  const taxas = gw + imposto, mc = receita - cpv - taxas - frete;
+  const ads = S.trafego.filter(t => dentro(t.data)).reduce((a,t)=>a+num(t.investimento),0);
+  const avulsos = S.variaveis.filter(x => dentro(x.data)).reduce((a,x)=>a+num(x.valor),0);
+  const fixos = meses.reduce((a,ym) => a + S.fixos.filter(f => fixoNoMes(f, ym)).reduce((b,f)=>b+num(f.valor),0) * fracao(ym), 0);
+  const pags = S.pagamentos.filter(p => dentro(p.data));
+  const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
+  const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
+  const colecao = S.custosColecao.filter(x => dentro(x.data)).reduce((a,x)=>a+num(x.valor),0);
+  const lucro = mc - ads - avulsos - fixos - equipe - colecao, nPed = pedidos.size, mcPct = receita ? mc/receita : NaN;
+  const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
+  return {ym: de + "_" + ate, vs, meses, receita, bruto, descontos, cpv, taxas, gateway: gw, gwEstimado: vs.some(v => !temTaxaReal(v)), imposto, impostoEst: receita*num(S.config.imposto)/100, impostoPago, impostoReal, impostoMisto: impostoReal && impostoEstMeses,
+    frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
+    roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN, equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN, dias: daysBetween(de, ate) + 1};
+}
 function calcAno(ano){
   const ms = Array.from({length:12}, (_,i) => calcMes(ano + "-" + String(i+1).padStart(2,"0")));
   const o = {ym: ano, vs: ms.flatMap(m => m.vs), meses: ms};
@@ -694,9 +737,16 @@ function periodBar(){
   S.vendas.forEach(v => { if(ativa(v) && (v.data||"").startsWith(ano)) (porMes[v.data.slice(0,7)] ||= new Set()).add(v.pedido || v.id); });
   const chips = [...anos].sort().reverse().map(y => `<button class="chip${y===ano?" on":""}" data-ano="${y}">${y}<span>${porAno[y]?.size || 0}</span></button>`).join("");
   const meses = MESES.map((m,i) => { const ym = ano + "-" + String(i+1).padStart(2,"0"), n = porMes[ym]?.size || 0;
-    return `<button class="${ym===MES && !anoTodo()?"on":""}" data-ym="${ym}">${m[0].toUpperCase()+m.slice(1)}${n?`<span>${n}</span>`:""}</button>`; }).join("");
-  const btnAno = ANO_VIEWS.includes(curView()) ? `<button class="${anoTodo()?"on":""}" data-ym="ano">Ano todo${porAno[ano]?.size ? `<span>${porAno[ano].size}</span>` : ""}</button>` : "";
-  return `<div class="period"><div class="chips" role="tablist" aria-label="Ano">${chips}</div><div class="seg" role="tablist" aria-label="Mês">${btnAno}${meses}</div></div>`;
+    return `<button class="${ym===MES && !anoTodo() && !periodo()?"on":""}" data-ym="${ym}">${m[0].toUpperCase()+m.slice(1)}${n?`<span>${n}</span>`:""}</button>`; }).join("");
+  const ok = ANO_VIEWS.includes(curView()), p = periodo();
+  const btnAno = ok ? `<button class="${anoTodo()?"on":""}" data-ym="ano">Ano todo${porAno[ano]?.size ? `<span>${porAno[ano].size}</span>` : ""}</button><button class="${p?"on":""}" data-ym="periodo">Período</button>` : "";
+  const nP = p ? new Set(S.vendas.filter(v => ativa(v) && v.data >= p.de && v.data <= p.ate).map(v => v.pedido || v.id)).size : 0;
+  const linhaPer = p ? `<div class="perrow">
+      <label>De <input type="date" id="perde" value="${p.de}" max="${p.ate}"></label>
+      <label>Até <input type="date" id="perate" value="${p.ate}" min="${p.de}"></label>
+      <span class="atalhos">${[[7,"7 dias"],[30,"30 dias"],[90,"90 dias"]].map(([d,l]) => `<button class="btn" data-perdias="${d}">${l}</button>`).join("")}</span>
+      <span class="sub">${nP} ${nP===1?"pedido":"pedidos"} · ${daysBetween(p.de,p.ate)+1} dias</span></div>` : "";
+  return `<div class="period"><div class="chips" role="tablist" aria-label="Ano">${chips}</div><div class="seg" role="tablist" aria-label="Mês">${btnAno}${meses}</div>${linhaPer}</div>`;
 }
 function saudacao(){
   const e = (window.seilleAuth?.email || "").split("@")[0].split(/[._\-+0-9]/).filter(Boolean)[0] || "Seille";
@@ -721,7 +771,8 @@ async function ligaVendas(id, p){
 function emptyRow(cols, title, hint){ return `<tr><td colspan="${cols}"><div class="empty"><b>${title}</b>${hint}</div></td></tr>`; }
 
 function chartLucro(){
-  const months = (anoTodo() ? Array.from({length:12},(_,i)=>MES.slice(0,4)+"-"+String(i+1).padStart(2,"0")) : Array.from({length:6},(_,i)=>addYm(MES,i-5))).map(calcMes);
+  const pp = periodo(), mesesPer = []; if(pp){ for(let ym = pp.de.slice(0,7); ym <= pp.ate.slice(0,7); ym = addYm(ym,1)) mesesPer.push(ym); }
+  const months = (pp ? mesesPer.slice(-12) : anoTodo() ? Array.from({length:12},(_,i)=>MES.slice(0,4)+"-"+String(i+1).padStart(2,"0")) : Array.from({length:6},(_,i)=>addYm(MES,i-5))).map(calcMes);
   const W=640,H=230,pl=56,pr=8,pt=14,pb=28;
   const vals = months.map(m=>m.lucro);
   let max = Math.max(0,...vals), min = Math.min(0,...vals);
@@ -737,7 +788,7 @@ function chartLucro(){
   }
   const bars = months.map((m,i)=>{
     const x = pl + i*bw + bw*0.22, w = bw*0.56, y0 = y(0), y1 = y(m.lucro), r = Math.min(4, Math.abs(y1-y0));
-    const pos = m.lucro >= 0, cur = anoTodo() || m.ym === MES;
+    const pos = m.lucro >= 0, cur = !!pp || anoTodo() || m.ym === MES;
     const fill = pos ? "var(--accent)" : "var(--neg)";
     const h = Math.abs(y1-y0);
     const path = h < 0.5 ? "" : pos
@@ -754,7 +805,7 @@ function niceStep(raw){ if(raw<=0) return 1000; const p = Math.pow(10, Math.floo
 const UF_NOME = {AC:"Acre",AL:"Alagoas",AP:"Amapá",AM:"Amazonas",BA:"Bahia",CE:"Ceará",DF:"Distrito Federal",ES:"Espírito Santo",GO:"Goiás",MA:"Maranhão",MT:"Mato Grosso",MS:"Mato Grosso do Sul",MG:"Minas Gerais",PA:"Pará",PB:"Paraíba",PR:"Paraná",PE:"Pernambuco",PI:"Piauí",RJ:"Rio de Janeiro",RN:"Rio Grande do Norte",RS:"Rio Grande do Sul",RO:"Rondônia",RR:"Roraima",SC:"Santa Catarina",SP:"São Paulo",SE:"Sergipe",TO:"Tocantins"};
 let REGP = "mes", REGUF = "";
 function painelEstados(){
-  const A = anoTodo(), ano = MES.slice(0,4), noPeriodo = v => (A || REGP === "ano") ? (v.data||"").startsWith(ano) : (v.data||"").slice(0,7) === MES;
+  const A = anoTodo() || !!periodo(), ano = MES.slice(0,4), noPeriodo = v => periodo() ? noRecorte(v.data) : (A || REGP === "ano") ? (v.data||"").startsWith(ano) : (v.data||"").slice(0,7) === MES;
   const gs = agrupaPedidos(S.vendas.filter(noPeriodo)).filter(g => !g.cancelado);
   const tot = gs.reduce((a,g)=>a+g.total,0);
   const m = {};
@@ -773,23 +824,25 @@ function painelEstados(){
         ${aberto ? `<div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
       </div></div>`; }).join("");
   return `<div class="panel" style="display:flex;flex-direction:column;gap:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos${A ? " em " + ano : ""}</h3>${A ? "" : `<div class="seg">${seg}</div>`}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos${periodo() ? " · " + rotuloRecorte() : A ? " em " + ano : ""}</h3>${A ? "" : `<div class="seg">${seg}</div>`}</div>
     ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div>`
       : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
   </div>`;
 }
 function vPainel(){
-  const A = anoTodo(), ano = MES.slice(0,4);
-  const c = A ? calcAno(ano) : calcMes(MES), prev = A ? calcAno(String(+ano-1)) : calcMes(addYm(MES,-1));
-  const per = A ? ano : ymLabel(MES);
-  const meta = num(S.config.metaFaturamento) * (A ? 12 : 1);
+  const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
+  const pAnt = P ? {ate: addDays(P.de, -1), de: addDays(P.de, -(daysBetween(P.de, P.ate) + 1))} : null;
+  const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
+  const prev = P ? calcPeriodo(pAnt.de, pAnt.ate) : A ? calcAno(String(+ano-1)) : calcMes(addYm(MES,-1));
+  const per = rotuloRecorte();
+  const meta = num(S.config.metaFaturamento) * (P ? c.dias/30.4375 : A ? 12 : 1);
   const delta = prev.receita ? (c.receita - prev.receita)/prev.receita : NaN;
   const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
     .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
     .sort((a,b)=>a.prazo.localeCompare(b.prazo));
   const top = {};
   for(const v of c.vs){ const k = v.produtoNome || "Sem peça"; top[k] = top[k] || {n:0, receita:0, lucro:0}; const vc = vendaCalc(v); top[k].n += num(v.qtd); top[k].receita += vc.receita; top[k].lucro += vc.lucro; }
-  const topArr = Object.entries(top).sort((a,b)=>b[1].receita-a[1].receita).slice(0, A ? 10 : 5);
+  const topArr = Object.entries(top).sort((a,b)=>b[1].receita-a[1].receita).slice(0, A || P ? 10 : 5);
   const ch = chartLucro();
   const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
   const dreRow = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
@@ -798,17 +851,17 @@ function vPainel(){
   <div class="seclbl">Resultado de ${per}<span>${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span></div>
   <div class="kpis">
     <div class="kpi"><span class="l">Faturamento</span><span class="v num">${brl(c.receita)}</span>
-      <span class="s">${meta ? pct(c.receita/meta,0)+" da meta de "+brlK(meta) : ""}${isFinite(delta)?` · ${delta>=0?"+":""}${pct(delta,0)} vs. ${A?"ano":"mês"} anterior`:""}</span>
+      <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta) : ""}${isFinite(delta)?` · ${delta>=0?"+":""}${pct(delta,0)} vs. ${P?"período anterior":A?"ano anterior":"mês anterior"}`:""}</span>
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
     <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span></div>
     <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
     <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span></div>
     <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
-    <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
+    <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
   ${painelEstados()}
   <div class="grid2">
-    <div class="panel"><h3>Demonstrativo ${A ? "do ano de " + ano : "do mês"}</h3>
+    <div class="panel"><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3>
       <table class="dre"><tbody>
         ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big")}
         ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus")}
@@ -824,7 +877,7 @@ function vPainel(){
         ${dreRow("Lucro líquido", c.lucro, "tot big")}
       </tbody></table>
     </div>
-    <div class="panel"><h3>Lucro líquido · ${A ? "mês a mês em " + ano : "últimos 6 meses"}</h3>
+    <div class="panel"><h3>Lucro líquido · ${P ? "meses do período (mês inteiro)" : A ? "mês a mês em " + ano : "últimos 6 meses"}</h3>
       <div class="chart" id="chart">${ch.svg}<div class="tip" id="tip" hidden></div></div>
       <p class="sub" style="margin:8px 0 0">Passe o mouse (ou toque) nas barras para ver faturamento e custos do mês.</p>
     </div>
@@ -836,9 +889,9 @@ function vPainel(){
         ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} pedidos na fila. Veja todos em Pedidos.</p>`:""}`
       : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
     </div>
-    <div class="panel"><h3>Peças que mais venderam ${A ? "em " + ano : "no mês"}</h3>
+    <div class="panel"><h3>Peças que mais venderam ${P ? "de " + per : A ? "em " + ano : "no mês"}</h3>
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
-      ${topArr.length ? topArr.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
+      ${topArr.length ? topArr.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
     </div>
   </div>`;
@@ -861,8 +914,7 @@ let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "", PEDLIM = 100;
 const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"]};
 function vPedidos(){
-  const A = anoTodo(), ano = MES.slice(0,4);
-  const todos = S.vendas.filter(v => A ? (v.data||"").startsWith(ano) : (v.data||"").slice(0,7) === MES);
+  const todos = S.vendas.filter(v => noRecorte(v.data));
   const grupos = agrupaPedidos(todos).sort((a,b) => (b.f.data||"").localeCompare(a.f.data||"") || String(b.f.pedido||"").localeCompare(String(a.f.pedido||""), undefined, {numeric:true}));
   const noGrupo = (g,k) => PED_GRUPO[k].includes(g.status);
   const cnt = k => grupos.filter(g => noGrupo(g,k)).length;
@@ -886,7 +938,7 @@ function vPedidos(){
     <select class="flt" id="peduf" aria-label="Estado"><option value="">Todos os estados</option>${ufs.map(u=>`<option${u===PEDUF?" selected":""}>${esc(u)}</option>`).join("")}</select>
     <select class="flt" id="pedcup" aria-label="Cupom"><option value="">Com e sem cupom</option><option value="__sem"${PEDCUP==="__sem"?" selected":""}>Sem cupom</option>${cups.map(c=>`<option${c===PEDCUP?" selected":""}>${esc(c)}</option>`).join("")}</select>
   </div>
-  <div class="seclbl">Pedidos de ${A ? ano : ymLabel(MES)}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
+  <div class="seclbl">Pedidos de ${rotuloRecorte()}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
   ${gs.length ? `<div class="olist">${gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     <div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
@@ -1591,7 +1643,7 @@ function render(){
   // keep config form edits from being wiped while typing
   if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
   if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
-  if(document.activeElement?.id === "nsdesde") return;
+  if(["nsdesde","perde","perate"].includes(document.activeElement?.id)) return;
   const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
   if(v === "painel") bindChart();
@@ -1604,9 +1656,15 @@ document.addEventListener("click", e => {
   const n = e.target.closest("[data-new]"); if(n && !n.disabled){ openForm(n.dataset.new, null, n.dataset.cat ? {categoria:n.dataset.cat} : null); return; }
   if(e.target.closest("#mais")){ $("#sheet").hidden = false; return; }
   if(e.target.id === "sheet"){ $("#sheet").hidden = true; return; }
-  const an = e.target.closest("[data-ano]"); if(an){ MES = an.dataset.ano + MES.slice(4); PEDLIM = 100; render(); return; }
+  const an = e.target.closest("[data-ano]"); if(an){ MES = an.dataset.ano + MES.slice(4); PER = null; PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-pedmais]")){ PEDLIM += 200; render(); return; }
-  const ym = e.target.closest("[data-ym]"); if(ym){ if(ym.dataset.ym === "ano") ANO = true; else { ANO = false; MES = ym.dataset.ym; } PEDLIM = 100; render(); return; }
+  const ym = e.target.closest("[data-ym]"); if(ym){
+    const k = ym.dataset.ym;
+    if(k === "ano"){ ANO = true; PER = null; }
+    else if(k === "periodo"){ if(!PER){ const fim = MES + "-" + String(new Date(+MES.slice(0,4), +MES.slice(5,7), 0).getDate()).padStart(2,"0"); PER = {de: MES + "-01", ate: fim < today() ? fim : today()}; } }
+    else { ANO = false; PER = null; MES = k; }
+    PEDLIM = 100; render(); return; }
+  const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
   const pf2 = e.target.closest("[data-pedf]"); if(pf2){ PEDF = pf2.dataset.pedf; render(); return; }
   const cs = e.target.closest("[data-colsel]"); if(cs){ COLSEL = cs.dataset.colsel; render(); return; }
   const pf = e.target.closest("[data-pagf]"); if(pf){ PAGF = pf.dataset.pagf; render(); $("#pags")?.scrollIntoView({behavior:"smooth", block:"start"}); return; }
@@ -1621,6 +1679,9 @@ document.addEventListener("click", e => {
 document.addEventListener("change", async e => {
   if(e.target.id === "pagf"){ PAGF = e.target.value; render(); return; }
   if(e.target.id === "peduf"){ PEDUF = e.target.value; render(); return; }
+  if((e.target.id === "perde" || e.target.id === "perate") && PER && e.target.value){
+    const de = e.target.id === "perde" ? e.target.value : PER.de, ate = e.target.id === "perate" ? e.target.value : PER.ate;
+    PER = de <= ate ? {de, ate} : {de: ate, ate: de}; PEDLIM = 100; e.target.blur(); render(); return; }
   if(e.target.id === "pedcup"){ PEDCUP = e.target.value; render(); return; }
   const sp = e.target.closest("select[data-statusped]");
   if(sp){
