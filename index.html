@@ -221,6 +221,7 @@ select.flt{border:1px solid var(--line);background:var(--surface);border-radius:
       <a href="#funcionarias">Funcionárias</a>
       <a href="#colecoes">Coleções</a>
       <a href="#trafego">Tráfego pago</a>
+      <a href="#impostos">Impostos</a>
       <a href="#ajustes">Ajustes</a>
     </nav>
   </div>
@@ -275,14 +276,15 @@ const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer
 const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
 const POR_PECA = "Produção por peça";
 const FORMAS = ["Pix","Transferência","Dinheiro","Boleto / guia"];
-const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao"];
+const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos"];
+const TIPOS_IMP = ["DAS – Simples Nacional","DAS-MEI","ICMS / DIFAL","ISS","IRPJ / CSLL","PIS / COFINS","Parcelamento de impostos","Outro imposto"];
 const CAT_COL = ["Fotógrafo","Vídeo maker","Modelos","Maquiagem e cabelo","Locação do espaço","Styling e produção de moda","Cenografia e objetos","Transporte","Alimentação","Edição e tratamento de imagens","Peças piloto do lançamento","Divulgação do lançamento","Outros"];
 const STATUS_COL = ["Planejamento","Em produção","Lançada","Encerrada"];
 const STATUS_COL_CLS = {"Planejamento":"", "Em produção":"acc", "Lançada":"good", "Encerrada":""};
 let COLSEL = "";
 const NLOAD = COLS.length + 1;
 
-const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
+const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], impostos:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
 let PAGF = "";
 let MES = today().slice(0,7);
 
@@ -309,6 +311,11 @@ function calcMes(ym){
   let receita=0,cpv=0,taxas=0,frete=0,descontos=0,bruto=0,pecas=0;
   const pedidos = new Set();
   for(const v of vs){ const c = vendaCalc(v); receita+=c.receita; cpv+=c.cpv; taxas+=c.taxas; frete+=c.frete; descontos+=num(v.desconto); bruto+=num(v.precoUnit)*num(v.qtd)+num(v.freteCobrado); pecas+=num(v.qtd); pedidos.add(v.pedido || v.id); }
+  const gateway = receita*num(S.config.taxaGateway)/100, impostoEst = receita*num(S.config.imposto)/100;
+  const imps = S.impostos.filter(x => x.competencia === ym);
+  const impostoPago = imps.reduce((a,x)=>a+num(x.valor),0), impostoReal = imps.length > 0;
+  const imposto = impostoReal ? impostoPago : impostoEst;
+  taxas = gateway + imposto;
   const mc = receita - cpv - taxas - frete;
   const ads = S.trafego.filter(t => (t.data||"").slice(0,7) === ym).reduce((a,t)=>a+num(t.investimento),0);
   const avulsos = S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
@@ -321,7 +328,7 @@ function calcMes(ym){
   const nPed = pedidos.size;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   const mcPct = receita ? mc/receita : NaN;
-  return {ym, vs, receita, bruto, descontos, cpv, taxas, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
+  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
     nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN,
     equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
 }
@@ -419,6 +426,14 @@ const SCHEMAS = {
     {key:"obs",label:"Observação",type:"text",wide:true},
     {key:"anexos",label:"Comprovantes",type:"files",wide:true},
   ], defaults:()=>({data:MES===today().slice(0,7)?today():MES+"-05",competencia:MES,tipo:"Salário",forma:"Pix",funcionariaId:PAGF||""})},
+  impostos: {title:"Imposto pago", fields:[
+    {key:"competencia",label:"Mês e ano de referência",type:"month",req:true,h:"Mês do faturamento a que o imposto se refere (competência)"},
+    {key:"tipo",label:"Imposto",type:"select",opts:()=>TIPOS_IMP.map(o=>[o,o])},
+    money("valor","Valor pago (R$)",{req:true,h:"Total da guia, com juros e multa se houver"}),
+    {key:"data",label:"Data do pagamento",type:"date"},
+    {key:"obs",label:"Observação",type:"text",wide:true},
+    {key:"anexos",label:"Guia e comprovante",type:"files",wide:true},
+  ], defaults:()=>({competencia:MES,tipo:TIPOS_IMP[0],data:today()})},
   trafego: {title:"Investimento em anúncio", fields:[
     {key:"data",label:"Data (ou início do período)",type:"date",req:true},
     {key:"plataforma",label:"Plataforma",type:"select",opts:()=>PLATAFORMAS.map(o=>[o,o])},
@@ -546,7 +561,7 @@ function openForm(col, doc, preset){
 document.addEventListener("keydown", e => { if(e.key === "Escape") closeModal(); });
 
 // ---------- views ----------
-const VIEWS = ["painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","ajustes"];
+const VIEWS = ["painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
 const curView = () => { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "painel"; };
 const docLinks = arr => (arr||[]).map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"comprovante")}</a>`).join("");
 const exBadge = d => d.exemplo ? `<span class="tag">exemplo</span>` : "";
@@ -616,7 +631,8 @@ function vPainel(){
       <table class="dre"><tbody>
         ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big")}
         ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus")}
-        ${dreRow(`Taxas do gateway e impostos (${(num(S.config.taxaGateway)+num(S.config.imposto)).toLocaleString("pt-BR")}%)`, -c.taxas, "minus")}
+        ${dreRow(`Taxas do gateway (${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -c.gateway, "minus")}
+        ${dreRow(c.impostoReal ? `Impostos pagos (lançados em <a href="#impostos">Impostos</a>)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em <a href="#impostos">Impostos</a>)`, -c.imposto, "minus")}
         ${dreRow("Frete pago", -c.frete, "minus")}
         ${dreRow("Margem de contribuição", c.mc, "tot")}
         ${dreRow("Tráfego pago", -c.ads, "minus")}
@@ -788,6 +804,43 @@ function vFuncionarias(){
   <p class="sub" style="margin:10px 0 0">Pagamentos do tipo "Produção por peça" não entram de novo no lucro, porque o valor da costura já está na ficha técnica de cada peça vendida. Se a costureira recebe salário fixo, deixe a costura da ficha técnica em zero.</p></div>`;
 }
 
+let IMPANO = "";
+function vImpostos(){
+  const ano = MES.slice(0,4);
+  const meses = Array.from({length:12}, (_,i) => ano + "-" + String(i+1).padStart(2,"0"));
+  const linhas = meses.map(ym => { const c = calcMes(ym); return {ym, receita:c.receita, pago:c.impostoPago, real:c.impostoReal, est:c.impostoEst}; });
+  const totFat = linhas.reduce((a,l)=>a+l.receita,0), totPago = linhas.reduce((a,l)=>a+l.pago,0);
+  const doMes = S.impostos.filter(x => x.competencia === MES).sort((a,b)=>(a.tipo||"").localeCompare(b.tipo||""));
+  const pagoMes = doMes.reduce((a,x)=>a+num(x.valor),0), cm = calcMes(MES);
+  const lista = S.impostos.filter(x => (x.competencia||"").slice(0,4) === ano).sort((a,b)=>(b.competencia||"").localeCompare(a.competencia||"") || (b.data||"").localeCompare(a.data||""));
+  const porTipo = {}; lista.forEach(x => porTipo[x.tipo||"Outro imposto"] = (porTipo[x.tipo||"Outro imposto"]||0) + num(x.valor));
+  const ateMes = linhas.filter(l => l.ym <= MES), semLanc = ateMes.filter(l => !l.real && l.receita > 0);
+  return `<div class="head"><div><h2>Impostos de ${ano}</h2><p>Lance o valor de cada guia paga (DAS, ICMS, ISS…) no mês e ano a que ela se refere. Quando um mês tem imposto lançado, o Painel usa o valor real no lugar da estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="#leitor" style="text-decoration:none">Ler guia ou comprovante</a><button class="btn pri" data-new="impostos">Lançar imposto</button></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="kpi"><span class="l">Pago em ${ymLabel(MES)}</span><span class="v num">${doMes.length ? brl(pagoMes) : "—"}</span><span class="s">${doMes.length ? (cm.receita ? pct(pagoMes/cm.receita) + " do faturamento do mês" : "Sem faturamento lançado no mês") : "Nenhum imposto lançado; estimativa " + brl(cm.impostoEst)}</span></div>
+    <div class="kpi"><span class="l">Pago em ${ano}</span><span class="v num">${brl(totPago)}</span><span class="s">${lista.length} ${lista.length===1?"guia lançada":"guias lançadas"}</span></div>
+    <div class="kpi"><span class="l">Alíquota efetiva no ano</span><span class="v num">${totFat && totPago ? pct(totPago/totFat) : "—"}</span><span class="s">Impostos pagos ÷ faturamento dos meses de ${ano}</span></div>
+    <div class="kpi"><span class="l">Meses sem imposto lançado</span><span class="v num">${semLanc.length}</span><span class="s">${semLanc.length ? "Com venda e sem guia até " + ymShort(MES) : "Tudo em dia até " + ymShort(MES)}</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>Mês a mês</h3><div class="tw"><table>
+      <thead><tr><th>Mês</th><th class="n">Faturamento</th><th class="n">Imposto pago</th><th class="n">% do faturamento</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr${l.ym===MES?' style="font-weight:600"':""}><td>${ymShort(l.ym)}</td><td class="n">${brl(l.receita)}</td><td class="n">${l.real ? brl(l.pago) : (l.receita && l.ym <= MES ? `<span class="pill warn">falta lançar</span>` : "—")}</td><td class="n">${l.real && l.receita ? pct(l.pago/l.receita) : "—"}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>Total ${ano}</td><td class="n">${brl(totFat)}</td><td class="n">${brl(totPago)}</td><td class="n">${totFat && totPago ? pct(totPago/totFat) : "—"}</td></tr></tfoot>
+    </table></div></div>
+    <div class="panel"><h3>Por tipo de imposto</h3><div class="tw"><table>
+      <thead><tr><th>Imposto</th><th class="n">Pago no ano</th></tr></thead>
+      <tbody>${Object.keys(porTipo).length ? Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${brl(v)}</td></tr>`).join("") : emptyRow(2, "Nada lançado em " + ano, "O total por tipo de imposto aparece aqui.")}</tbody>
+    </table></div></div>
+  </div>
+  <div class="panel"><h3>Guias lançadas em ${ano}</h3><div class="tw"><table>
+    <thead><tr><th>Referência</th><th>Imposto</th><th>Pago em</th><th class="n">Valor</th></tr></thead>
+    <tbody>${lista.length ? lista.map(x => `<tr class="click" data-edit="impostos" data-id="${x.id}"><td>${ymShort(x.competencia)}</td><td>${esc(x.tipo||"")}${exBadge(x)}${x.obs?`<div class="sub">${esc(x.obs)}</div>`:""}${docLinks(x.anexos)}</td><td>${x.data ? dBR(x.data) : `<span class="pill warn">a pagar</span>`}</td><td class="n">${brl(x.valor)}</td></tr>`).join("")
+      : emptyRow(4, "Nenhum imposto lançado", "Toque em Lançar imposto e informe o mês de referência e o valor da guia.")}</tbody>
+  </table></div></div>
+  <p class="sub">Encargos de funcionárias (INSS, FGTS) continuam em Funcionárias, para não contar duas vezes.</p>`;
+}
 function vTrafego(){
   const ts = S.trafego.filter(t => (t.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
   const c = calcMes(MES);
@@ -923,10 +976,12 @@ Categorias de custo permitidas: ${CATS.join("; ")}
 Tipos de pagamento a funcionárias: ${TIPOS_PAG.join("; ")}
 Formas de pagamento: ${FORMAS.join("; ")}
 Plataformas de anúncio: ${PLATAFORMAS.join("; ")}
+Tipos de imposto: ${TIPOS_IMP.join("; ")}
 
 Regras:
 - Holerite, recibo de salário, ou Pix/transferência para uma pessoa da equipe: destino "funcionaria". Use o valor LÍQUIDO efetivamente pago. Case o favorecido com uma funcionária cadastrada pelo nome (ignore acentos, maiúsculas e sobrenomes faltando) e devolva o id; se nenhuma casar, funcionariaId null e informe o nome em "favorecido".
 - Guia de INSS, FGTS, DAE ou eSocial de funcionária: destino "funcionaria", tipoPagamento "INSS / FGTS / encargos".
+- Guia ou comprovante de imposto da empresa (DAS do Simples Nacional, DAS-MEI, ICMS, DIFAL, ISS, IRPJ, CSLL, PIS, COFINS, parcelamento): destino "imposto", com tipoImposto e "competencia" igual ao período de apuração da guia.
 - Pagamento a costureira ou facção por peças produzidas: tipoPagamento "Produção por peça".
 - Luz, água, internet, telefone, aluguel, condomínio, IPTU, seguro, contador, plataforma do site, apps, taxas bancárias, manutenção de máquinas e compras: se houver custo fixo cadastrado da mesma categoria ou fornecedor, destino "fixo" com fixoId; senão destino "variavel" com a categoria mais adequada.
 - Pagamentos ligados ao lançamento de uma coleção (fotógrafo, vídeo maker, modelos, maquiagem e cabelo, locação de espaço para ensaio, styling, cenografia, transporte e alimentação da equipe no ensaio, edição de imagens): destino "colecao", com colecaoId (a coleção em planejamento ou produção mais próxima da data, se o documento não disser qual) e categoriaColecao.
@@ -939,21 +994,21 @@ Regras:
 - "observacao" diz em uma frase o que a pessoa deve conferir, ou fica vazia.
 
 Responda só com um objeto JSON neste formato:
-{"tipoDocumento":"comprovante de Pix","destino":"funcionaria","descricao":"Salário de outubro","favorecido":"Maria Souza","valor":1900.00,"data":"2026-11-05","pago":true,"competencia":"2026-10","funcionariaId":null,"tipoPagamento":"Salário","formaPagamento":"Pix","categoria":null,"fixoId":null,"colecaoId":null,"categoriaColecao":null,"plataforma":null,"confianca":0.9,"observacao":""}
+{"tipoDocumento":"comprovante de Pix","destino":"funcionaria","descricao":"Salário de outubro","favorecido":"Maria Souza","valor":1900.00,"data":"2026-11-05","pago":true,"competencia":"2026-10","funcionariaId":null,"tipoPagamento":"Salário","formaPagamento":"Pix","categoria":null,"fixoId":null,"colecaoId":null,"categoriaColecao":null,"plataforma":null,"tipoImposto":null,"confianca":0.9,"observacao":""}
 
 ${text ? `Texto extraído do arquivo "${nome}":\n"""\n${text.slice(0,15000)}\n"""` : `O documento está na imagem anexa (arquivo "${nome}").`}`;
 }
 function normaliza(r){
   r = (r && typeof r === "object") ? r : {};
   const o = {
-    tipoDocumento: String(r.tipoDocumento||"documento"), destino: ["funcionaria","colecao","variavel","fixo","trafego","ignorar"].includes(r.destino) ? r.destino : "variavel",
+    tipoDocumento: String(r.tipoDocumento||"documento"), destino: ["funcionaria","colecao","variavel","fixo","trafego","imposto","ignorar"].includes(r.destino) ? r.destino : "variavel",
     descricao: String(r.descricao||""), favorecido: String(r.favorecido||""), valor: num(r.valor), data: /^\d{4}-\d{2}-\d{2}$/.test(r.data||"") ? r.data : today(),
     pago: r.pago !== false, competencia: /^\d{4}-\d{2}$/.test(r.competencia||"") ? r.competencia : "",
     funcionariaId: S.funcionarias.some(f=>f.id===r.funcionariaId) ? r.funcionariaId : "",
     tipoPagamento: TIPOS_PAG.includes(r.tipoPagamento) ? r.tipoPagamento : "Salário", formaPagamento: FORMAS.includes(r.formaPagamento) ? r.formaPagamento : "Pix",
     categoria: CATS.includes(r.categoria) ? r.categoria : "Outros", fixoId: S.fixos.some(f=>f.id===r.fixoId) ? r.fixoId : "",
     colecaoId: S.colecoes.some(c=>c.id===r.colecaoId) ? r.colecaoId : (S.colecoes.find(c=>c.status!=="Encerrada")?.id || ""), categoriaColecao: CAT_COL.includes(r.categoriaColecao) ? r.categoriaColecao : "Outros",
-    plataforma: PLATAFORMAS.includes(r.plataforma) ? r.plataforma : "Meta Ads", confianca: Math.max(0, Math.min(1, num(r.confianca))), observacao: String(r.observacao||""),
+    plataforma: PLATAFORMAS.includes(r.plataforma) ? r.plataforma : "Meta Ads", tipoImposto: TIPOS_IMP.includes(r.tipoImposto) ? r.tipoImposto : TIPOS_IMP[0], confianca: Math.max(0, Math.min(1, num(r.confianca))), observacao: String(r.observacao||""),
   };
   if(!o.competencia) o.competencia = o.data.slice(0,7);
   if(o.destino === "funcionaria" && !o.funcionariaId && o.favorecido) o.funcionariaId = "__novo";
@@ -993,7 +1048,7 @@ function addFiles(list){
   }
   render(); processaFila();
 }
-const DEST = [["funcionaria","Pagamento a funcionária"],["colecao","Custo de lançamento de coleção"],["variavel","Custo do mês"],["fixo","Comprovante de custo fixo"],["trafego","Tráfego pago"],["ignorar","Não lançar"]];
+const DEST = [["funcionaria","Pagamento a funcionária"],["colecao","Custo de lançamento de coleção"],["variavel","Custo do mês"],["fixo","Comprovante de custo fixo"],["trafego","Tráfego pago"],["imposto","Imposto pago"],["ignorar","Não lançar"]];
 function avisos(it){
   const g = it.sug, out = [];
   if(!g.pago) out.push("Este documento parece ser uma conta ou boleto, sem prova de pagamento.");
@@ -1022,6 +1077,7 @@ function cardLeitor(it){
     if(g.destino === "colecao") campos += sel("colecaoId","Coleção",[["","Escolha"],...S.colecoes.map(c=>[c.id,c.nome])]) + sel("categoriaColecao","Categoria",CAT_COL.map(x=>[x,x]));
     if(g.destino === "fixo") campos += sel("fixoId","Custo fixo",[["","Escolha"],...S.fixos.map(f=>[f.id,`${f.nome} (${brl(f.valor)})`])]);
     if(g.destino === "trafego") campos += sel("plataforma","Plataforma",PLATAFORMAS.map(x=>[x,x]));
+    if(g.destino === "imposto") campos += sel("tipoImposto","Imposto",TIPOS_IMP.map(x=>[x,x]));
     campos += inp("valor","Valor (R$)","number") + inp("data","Data","date") + inp("competencia","Mês de referência","month") + inp("descricao","Descrição","text", true);
   }
   const conf = g.confianca >= .8 ? ["good","confiança alta"] : g.confianca >= .5 ? ["warn","confira com atenção"] : ["bad","confiança baixa"];
@@ -1069,6 +1125,9 @@ async function confirmaLeitor(id, btn){
     } else if(g.destino === "trafego"){
       await S.db.collection("trafego").add({...base, data:g.data, plataforma:g.plataforma, campanha:g.descricao, investimento:g.valor, impressoes:null, cliques:null, anexos});
       it.msg = `${brl(g.valor)} lançado em Tráfego pago (${g.plataforma}).`;
+    } else if(g.destino === "imposto"){
+      await S.db.collection("impostos").add({...base, competencia:comp, tipo:g.tipoImposto, valor:g.valor, data:g.pago ? g.data : "", obs:g.descricao, anexos});
+      it.msg = `${brl(g.valor)} de ${g.tipoImposto} lançado em Impostos (referência ${ymShort(comp)}).`;
     }
     if(!S.assets) it.msg += " O arquivo não foi guardado.";
     it.status = "salvo"; render();
@@ -1159,7 +1218,7 @@ function vColecoes(){
   ${cols.length ? `<div class="cgrid">${cards}</div>${det}` : `<div class="panel empty"><b>Nenhuma coleção cadastrada</b>Crie a primeira coleção para planejar o orçamento do lançamento e lançar os custos do ensaio.</div>`}
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }
-const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, ajustes:vAjustes};
+const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, ajustes:vAjustes};
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
