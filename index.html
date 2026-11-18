@@ -147,6 +147,7 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .cids>div span:last-child{color:var(--ink2);white-space:nowrap}
 .kclick:hover{border-color:#BDBDBD}
 .modal.largo{max-width:960px}
+@media (max-width:600px){.hide-m{display:none}.modal.largo td{padding:9px 6px}}
 .filtros input{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px}
 .filtros select.flt{border-radius:999px;padding:9px 14px;background:var(--surface)}
 
@@ -855,6 +856,38 @@ function comparaAnoAnterior(){
   const varia = (a, b) => { if(!temAnt) return ""; if(!b) return ""; const d = (a - b)/Math.abs(b); return `<span class="var ${d>=0?"up":"down"}">${d>=0?"+":""}${pct(d,0)}</span>`; };
   return {R, RA, atual, ant, rot, temAnt, varia, ano: RA.de.slice(0,4)};
 }
+// Ranking por modelo (sem separar tamanhos), da mais vendida para a menos vendida
+const modeloDe = v => { const p = v.produtoId && S.produtos.find(x => x.id === v.produtoId); const nome = p ? p.nome : String(v.produtoNome || "Sem peça").replace(/\s*\([^)]*\)\s*$/, "").trim() || "Sem peça"; return {k: p ? "id:" + p.id : "n:" + semAc(nome), nome}; };
+const tamanhoDe = v => v.tamanho || (/\(([^)]*)\)\s*$/.exec(v.produtoNome || "") || [])[1] || "";
+function rankingPecas(vs){
+  const top = {};
+  for(const v of vs){ const m = modeloDe(v); const t = (top[m.k] ||= {nome:m.nome, n:0, receita:0, lucro:0, tam:{}}); const vc = vendaCalc(v); t.n += num(v.qtd); t.receita += vc.receita; t.lucro += vc.lucro; const tm = tamanhoDe(v); if(tm) t.tam[tm] = (t.tam[tm]||0) + num(v.qtd); }
+  return Object.values(top).sort((a,b) => b.n - a.n || b.receita - a.receita);
+}
+let PECQ = "";
+function openTodasPecas(){
+  const vs = S.vendas.filter(v => ativa(v) && noRecorte(v.data)), r = rankingPecas(vs);
+  const totN = r.reduce((a,t)=>a+t.n,0), totR = r.reduce((a,t)=>a+t.receita,0), totL = r.reduce((a,t)=>a+t.lucro,0);
+  const ORD = ["PP","P","M","G","GG","XG","U","ÚNICO","UNICO"];
+  const tams = t => Object.entries(t.tam).sort((a,b) => { const ia = ORD.indexOf(a[0].toUpperCase()), ib = ORD.indexOf(b[0].toUpperCase()); return (ia<0?99:ia) - (ib<0?99:ib) || a[0].localeCompare(b[0]); }).map(([k,n]) => `${esc(k)} ${n}`).join(" · ");
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal largo">
+    <div><h2>Peças vendidas · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${r.length} modelos · ${intf(totN)} peças · ${brl(totR)} · da mais vendida para a menos vendida</p></div>
+    <input type="search" id="pecq" placeholder="Buscar peça" value="${esc(PECQ)}" style="border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px">
+    <div class="tw"><table>
+      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n hide-m">% das peças</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead>
+      <tbody id="pectb">${r.map((t,i) => `<tr data-busca="${esc(semAc(t.nome))}"><td><span class="sub">${i+1}.</span> ${esc(t.nome)}${Object.keys(t.tam).length ? `<div class="sub">${tams(t)}</div>` : ""}</td><td class="n"><b>${t.n}</b></td><td class="n hide-m">${pct(totN ? t.n/totN : 0)}</td><td class="n">${brl(t.receita)}</td><td class="n">${brl(t.lucro)}</td></tr>`).join("") || emptyRow(5, "Sem vendas no período", "")}</tbody>
+      ${r.length ? `<tfoot><tr><td>Total</td><td class="n">${intf(totN)}</td><td class="n hide-m">100%</td><td class="n">${brl(totR)}</td><td class="n">${brl(totL)}</td></tr></tfoot>` : ""}
+    </table></div>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+  const filtra = () => { const q = semAc($("#pecq", modalEl).value); PECQ = $("#pecq", modalEl).value; modalEl.querySelectorAll("#pectb tr[data-busca]").forEach(tr => tr.hidden = !!q && !tr.dataset.busca.includes(q)); };
+  $("#pecq", modalEl).addEventListener("input", filtra); filtra();
+}
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
@@ -865,11 +898,7 @@ function vPainel(){
   const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
     .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
     .sort((a,b)=>a.prazo.localeCompare(b.prazo));
-  const top = {};
-  // Por modelo (sem separar tamanhos): peça cadastrada ou nome sem o tamanho entre parênteses
-  const modelo = v => { const p = v.produtoId && S.produtos.find(x => x.id === v.produtoId); const nome = p ? p.nome : String(v.produtoNome || "Sem peça").replace(/\s*\([^)]*\)\s*$/, "").trim() || "Sem peça"; return {k: p ? "id:" + p.id : "n:" + semAc(nome), nome}; };
-  for(const v of c.vs){ const m = modelo(v); const t = (top[m.k] ||= {nome:m.nome, n:0, receita:0, lucro:0}); const vc = vendaCalc(v); t.n += num(v.qtd); t.receita += vc.receita; t.lucro += vc.lucro; }
-  const topArr = Object.values(top).sort((a,b) => b.n - a.n || b.receita - a.receita).slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
+  const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
   const ch = chartLucro();
   const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
   const dreRow = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
@@ -921,6 +950,7 @@ function vPainel(){
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
       ${topArr.length ? topArr.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
+      ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}
     </div>
   </div>`;
 }
@@ -1697,6 +1727,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("select.st, select.flt, a")) return;
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
+  if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
   const rp = e.target.closest("[data-regp]"); if(rp){ REGP = rp.dataset.regp; REGUF = ""; render(); return; }
   const ru = e.target.closest("[data-reguf]"); if(ru){ REGUF = REGUF === ru.dataset.reguf ? "" : ru.dataset.reguf; render(); return; }
   const r = e.target.closest("[data-edit]");
