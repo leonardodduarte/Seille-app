@@ -162,7 +162,8 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     const parcelas = n(o.payment_details?.installments) || null;
     const cupom = (Array.isArray(o.coupon) ? o.coupon : []).map((c: any) => c?.code).filter(Boolean).join(", ");
     const end = o.shipping_address ?? {};
-    const enviado = ["shipped", "fulfilled", "delivered"].includes(o.shipping_status);
+    const enviado = ["shipped", "fulfilled", "delivered"].includes(o.shipping_status) || !!o.shipped_at;
+    const arquivado = o.status === "closed"; // pedido concluído e arquivado na Nuvemshop
     const comum = {
       data: dataBR(o.paid_at || o.created_at), pedido: String(o.number ?? o.id),
       cliente: o.customer?.name || o.contact_name || o.billing_name || "",
@@ -184,7 +185,9 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         fretePago: antes ? n(antes.fretePago) : (i === 0 ? fretePago : 0),
         custoUnit: antes ? n(antes.custoUnit) : (prod ? r2(custoPeca(prod)) : 0),
         origem: antes?.origem || "Loja virtual (sem origem)",
-        status: cancelado ? "Cancelado" : antes ? (enviado && EM_ABERTO.includes(antes.status) ? "Enviado" : antes.status) : (enviado ? "Enviado" : "Recebido"),
+        status: cancelado ? "Cancelado"
+          : arquivado ? (antes && !EM_ABERTO.includes(antes.status) ? antes.status : "Entregue")
+          : antes ? (enviado && EM_ABERTO.includes(antes.status) ? "Enviado" : antes.status) : (enviado ? "Enviado" : "Recebido"),
         criadoEm: antes?.criadoEm || new Date().toISOString(),
       };
       if (taxasApi != null || jurosApi != null) {          // valores da loja

@@ -919,6 +919,20 @@ function openTodasPecas(){
   const filtra = () => { const q = semAc($("#pecq", modalEl).value); PECQ = $("#pecq", modalEl).value; modalEl.querySelectorAll("#pectb tr[data-busca]").forEach(tr => tr.hidden = !!q && !tr.dataset.busca.includes(q)); };
   $("#pecq", modalEl).addEventListener("input", filtra); filtra();
 }
+// Fila de produção: só pedidos recentes; os antigos ainda "em aberto" podem ser marcados como entregues de uma vez
+const DIAS_FILA = 60;
+const pedidosAntigosAbertos = () => S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status) && (v.data||"") < addDays(today(), -DIAS_FILA));
+async function marcarAntigos(btn){
+  const lista = pedidosAntigosAbertos(); if(!lista.length || !S.db) return;
+  if(!btn.classList.contains("arm")){ btn.classList.add("arm"); btn.textContent = `Confirmar: marcar ${lista.length} como entregues`; return; }
+  btn.disabled = true;
+  let n = 0;
+  try{
+    for(const v of lista){ const body = {...v, status: "Entregue"}; delete body.id; await S.db.collection("vendas").doc(v.id).set(body); n++; if(n % 20 === 0) btn.textContent = `Atualizando… ${n} de ${lista.length}`; }
+    toast(`${n} ${n===1?"peça marcada":"peças marcadas"} como entregues`);
+  }catch(err){ toast(`Parou em ${n} de ${lista.length}. Toque de novo para continuar.`); }
+  render();
+}
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
@@ -927,7 +941,8 @@ function vPainel(){
   const sess = sessoesRecorte();
   const cmp = comparaAnoAnterior(), ca = cmp.atual, cp = cmp.ant;
   const vsAnt = (a, b) => cmp.temAnt ? `${cmp.varia(a, b)} vs. ${brl(b)} em ${cmp.rot}` : "";
-  const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
+  const antigos = pedidosAntigosAbertos();
+  const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status) && (v.data||"") >= addDays(today(), -DIAS_FILA))
     .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
     .sort((a,b)=>a.prazo.localeCompare(b.prazo));
   const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
@@ -976,7 +991,8 @@ function vPainel(){
       ${fila.length ? `<div class="qlist">${fila.slice(0,8).map(v=>`<div class="qi"><div class="grow"><div><b>${esc(v.produtoNome)}</b> ${v.tamanho?`<span class="sub">· ${esc(v.tamanho)}</span>`:""} ${num(v.qtd)>1?`<span class="sub">× ${num(v.qtd)}</span>`:""}${exBadge(v)}</div><div class="sub">${esc(v.cliente||"")} ${v.pedido?"· #"+esc(v.pedido):""} · prazo ${dBR(v.prazo)}</div></div>
         ${statusPill(v.status)}<span class="pill ${v.faltam<0?"bad":v.faltam<=2?"warn":""}">${v.faltam<0?Math.abs(v.faltam)+"d atrasado":v.faltam===0?"vence hoje":v.faltam+"d"}</span></div>`).join("")}</div>
         ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} pedidos na fila. Veja todos em Pedidos.</p>`:""}`
-      : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
+      : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos dos últimos ${DIAS_FILA} dias com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
+      ${antigos.length ? `<div class="note" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"><span><b>${antigos.length} ${antigos.length===1?"peça":"peças"}</b> de pedidos com mais de ${DIAS_FILA} dias ainda ${antigos.length===1?"está":"estão"} como Recebido, Em produção ou Pronto. Provavelmente já foram entregues e não foram marcadas como enviadas na Nuvemshop. Elas não aparecem na fila.</span><div><button class="btn" data-marcaant>Marcar ${antigos.length===1?"como entregue":"todas como entregues"}</button></div></div>` : ""}
     </div>
     <div class="panel"><h3>Peças que mais venderam ${P ? "de " + per : A ? "em " + ano : "no mês"}</h3>
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
@@ -1807,6 +1823,7 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  const ma = e.target.closest("[data-marcaant]"); if(ma && !ma.disabled){ marcarAntigos(ma); return; }
   const rp = e.target.closest("[data-regp]"); if(rp){ REGP = rp.dataset.regp; REGUF = ""; render(); return; }
   const ru = e.target.closest("[data-reguf]"); if(ru){ REGUF = REGUF === ru.dataset.reguf ? "" : ru.dataset.reguf; render(); return; }
   const r = e.target.closest("[data-edit]");
