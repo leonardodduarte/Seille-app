@@ -1843,6 +1843,8 @@ async function processaFila(){
           }catch(e){ if(e?.code !== "sem_chave" && e?.code !== "unavailable") console.error(e); }
         }
         if(!sug){ if(!text) throw {code:"sem_texto"}; sug = leituraGenerica(text); }
+        // filtro do e-mail: por enquanto só entram as guias do Simples Nacional recebidas desde dez/2025
+        if(it.entradaId && !entraDoEmail(sug, it)){ marcaEntrada(it, "filtrado"); S.fila = S.fila.filter(x => x !== it); render(); continue; }
         it.sug = normaliza(sug);
         if(!it.porIA) it.sug.observacao = ["Lido automaticamente, sem IA. Confira antes de confirmar.", it.sug.observacao].filter(Boolean).join(" ");
         it.etapa = "";
@@ -1949,7 +1951,11 @@ async function confirmaLeitor(id, btn){
   }catch(e){ fail(e?.code === "invalid_argument" ? "Você tem acesso só de leitura." : "Não foi possível lançar agora. Tente de novo."); }
 }
 // ---------- documentos recebidos por e-mail (caixa de entrada) ----------
-let puxandoEntrada = false;
+// Filtro combinado com a Seille: só as guias do Simples Nacional (DAS), de e-mails recebidos desde 01/12/2025
+const EMAIL_DESDE = "2025-12-01";
+const entraDoEmail = (sug, it) => sug?.destino === "imposto" && sug?.tipoImposto === "DAS – Simples Nacional"
+  && String(S.entrada.find(e => e.id === it.entradaId)?.recebidoEm || "9") >= EMAIL_DESDE;
+let puxandoEntrada = false; const entradaVista = new Set(); // não puxa de novo o mesmo documento nesta sessão
 async function marcaEntrada(it, status){
   if(!it.entradaId || !S.db) return;
   const e = S.entrada.find(x => x.id === it.entradaId); if(!e) return;
@@ -1958,13 +1964,14 @@ async function marcaEntrada(it, status){
 }
 async function puxarEntrada(){
   if(puxandoEntrada || !S.assets?.baixar) return;
-  const novos = S.entrada.filter(e => e.status === "novo" && !S.fila.some(it => it.entradaId === e.id))
-    .sort((a,b) => String(a.recebidoEm||"").localeCompare(String(b.recebidoEm||""))).slice(0, 10);
+  const novos = S.entrada.filter(e => e.status === "novo" && !entradaVista.has(e.id) && !S.fila.some(it => it.entradaId === e.id))
+    .sort((a,b) => String(a.recebidoEm||"").localeCompare(String(b.recebidoEm||""))).slice(0, 30);
   if(!novos.length) return;
   puxandoEntrada = true;
   try{
     for(const e of novos){
       try{
+        entradaVista.add(e.id);
         const blob = await S.assets.baixar(e.arquivo);
         const file = new File([blob], e.nome || "documento.pdf", {type: "application/pdf"});
         S.fila.push({id: "q" + (++FID), file, status: "aguardando", thumb: null, entradaId: e.id, arquivoId: e.arquivo, origem: [e.de, e.assunto].filter(Boolean).join(" · ")});
@@ -1975,9 +1982,9 @@ async function puxarEntrada(){
 }
 function vLeitor(){
   const nP = S.fila.filter(x=>x.status==="pronto").length;
-  const novosEmail = S.entrada.filter(e => e.status === "novo").length;
+  const novosEmail = S.entrada.filter(e => e.status === "novo" && !entradaVista.has(e.id)).length;
   if(novosEmail && curView() === "leitor") setTimeout(puxarEntrada, 0);
-  return `${novosEmail ? `<div class="banner info"><b>${novosEmail} ${novosEmail === 1 ? "documento recebido" : "documentos recebidos"} por e-mail</b> esperando conferência. ${novosEmail > 10 ? "Eles entram na lista de 10 em 10." : "Eles já aparecem na lista abaixo."}</div>` : ""}
+  return `${novosEmail ? `<div class="banner info"><b>${novosEmail} ${novosEmail === 1 ? "documento do e-mail" : "documentos do e-mail"}</b> sendo verificados. Por enquanto só aparecem as guias do <b>Simples Nacional (DAS)</b> recebidas desde 12/2025; os outros PDFs são deixados de lado.</div>` : ""}
   <div class="head"><div><h2>Adicionar documentos</h2><p>Envie DARF, DAS, boletos (aluguel, condomínio, contas), comprovantes de Pix e transferência e holerites, em PDF ou foto. O app lê sozinho, sem custo, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
   
   <label class="drop" id="drop" for="upl"><b>Solte os arquivos aqui</b><span class="sub">ou toque para escolher fotos e PDFs. Pode enviar vários de uma vez.</span><span class="btn pri">Escolher arquivos</span><input type="file" id="upl" multiple accept="image/*,application/pdf"></label>

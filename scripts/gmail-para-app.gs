@@ -10,14 +10,16 @@
  */
 const SEILLE_URL = "https://bbpwibqysasqopiqelvd.supabase.co/functions/v1/email-docs";
 const MARCADOR = "seille-app";
-const DESDE = "2026/01/01"; // e-mails a partir desta data (a primeira busca traz o histórico aos poucos)
+const DESDE = "2025/12/01"; // e-mails a partir desta data (a primeira busca traz o histórico aos poucos)
+// Por enquanto só as guias do Simples Nacional (DAS). Para voltar a receber todos os PDFs, deixe FILTRO = "".
+const FILTRO = '("simples nacional" OR DAS OR PGDAS OR "documento de arrecadação")';
 
 function buscarDocumentos() {
   const token = PropertiesService.getScriptProperties().getProperty("SEILLE_TOKEN");
   if (!token) throw new Error("Falta a propriedade SEILLE_TOKEN (Configurações do projeto → Propriedades do script).");
   const marcador = GmailApp.getUserLabelByName(MARCADOR) || GmailApp.createLabel(MARCADOR);
   const inicio = Date.now();
-  const conversas = GmailApp.search(`has:attachment filename:pdf after:${DESDE} -label:${MARCADOR}`, 0, 40);
+  const conversas = GmailApp.search(`has:attachment filename:pdf after:${DESDE} ${FILTRO} -label:${MARCADOR}`, 0, 40);
   let enviados = 0;
   for (const conversa of conversas) {
     if (Date.now() - inicio > 4.5 * 60 * 1000) break; // o Google limita cada execução a 6 minutos
