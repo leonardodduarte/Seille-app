@@ -125,6 +125,9 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.kpi .s.cmp{color:var(--muted)}
+.var{font-weight:700;color:var(--ink)}
+.var.down{color:var(--bad)}
 .perrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .perrow label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
 .perrow input{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;min-width:0}
@@ -834,14 +837,31 @@ function painelEstados(){
       : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
   </div>`;
 }
+// Comparação com o mesmo período do ano anterior (até a mesma data, para não comparar mês incompleto com mês inteiro)
+const menosUmAno = d => { const y = +d.slice(0,4) - 1; const r = y + d.slice(4); return r.endsWith("-02-29") ? y + "-02-28" : r; };
+function recorteAtual(){
+  const p = periodo(), t = today();
+  if(p) return {de: p.de, ate: p.ate};
+  const ate = d => d < t ? d : t;
+  if(anoTodo()){ const a = MES.slice(0,4); const r = {de: a + "-01-01", ate: ate(a + "-12-31")}; return r.ate < r.de ? {de: r.de, ate: a + "-12-31"} : r; }
+  const fim = MES + "-" + String(new Date(+MES.slice(0,4), +MES.slice(5,7), 0).getDate()).padStart(2,"0");
+  const r = {de: MES + "-01", ate: ate(fim)}; return r.ate < r.de ? {de: r.de, ate: fim} : r;
+}
+function comparaAnoAnterior(){
+  const R = recorteAtual(), RA = {de: menosUmAno(R.de), ate: menosUmAno(R.ate)};
+  const atual = calcPeriodo(R.de, R.ate), ant = calcPeriodo(RA.de, RA.ate);
+  const rot = `${dBR(RA.de).slice(0,5)} a ${dBR(RA.ate)}`;
+  const temAnt = S.vendas.some(v => ativa(v) && (v.data||"") >= RA.de && (v.data||"") <= RA.ate);
+  const varia = (a, b) => { if(!temAnt) return ""; if(!b) return ""; const d = (a - b)/Math.abs(b); return `<span class="var ${d>=0?"up":"down"}">${d>=0?"+":""}${pct(d,0)}</span>`; };
+  return {R, RA, atual, ant, rot, temAnt, varia, ano: RA.de.slice(0,4)};
+}
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
-  const pAnt = P ? {ate: addDays(P.de, -1), de: addDays(P.de, -(daysBetween(P.de, P.ate) + 1))} : null;
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
-  const prev = P ? calcPeriodo(pAnt.de, pAnt.ate) : A ? calcAno(String(+ano-1)) : calcMes(addYm(MES,-1));
   const per = rotuloRecorte();
   const meta = num(S.config.metaFaturamento) * (P ? c.dias/30.4375 : A ? 12 : 1);
-  const delta = prev.receita ? (c.receita - prev.receita)/prev.receita : NaN;
+  const cmp = comparaAnoAnterior(), ca = cmp.atual, cp = cmp.ant;
+  const vsAnt = (a, b) => cmp.temAnt ? `${cmp.varia(a, b)} vs. ${brl(b)} em ${cmp.rot}` : "";
   const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
     .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
     .sort((a,b)=>a.prazo.localeCompare(b.prazo));
@@ -858,11 +878,12 @@ function vPainel(){
   <div class="seclbl">Resultado de ${per}<span>${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span></div>
   <div class="kpis">
     <div class="kpi"><span class="l">Faturamento</span><span class="v num">${brl(c.receita)}</span>
-      <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta) : ""}${isFinite(delta)?` · ${delta>=0?"+":""}${pct(delta,0)} vs. ${P?"período anterior":A?"ano anterior":"mês anterior"}`:""}</span>
+      <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta) : ""}</span>
+      <span class="s cmp">${cmp.temAnt ? vsAnt(ca.receita, cp.receita) : `Sem vendas no app de ${cmp.rot} para comparar`}</span>
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
-    <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span></div>
+    <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
     <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
-    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span></div>
+    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
     <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
