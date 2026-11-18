@@ -841,8 +841,10 @@ function vPainel(){
     .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
     .sort((a,b)=>a.prazo.localeCompare(b.prazo));
   const top = {};
-  for(const v of c.vs){ const k = v.produtoNome || "Sem peça"; top[k] = top[k] || {n:0, receita:0, lucro:0}; const vc = vendaCalc(v); top[k].n += num(v.qtd); top[k].receita += vc.receita; top[k].lucro += vc.lucro; }
-  const topArr = Object.entries(top).sort((a,b)=>b[1].receita-a[1].receita).slice(0, A || P ? 10 : 5);
+  // Por modelo (sem separar tamanhos): peça cadastrada ou nome sem o tamanho entre parênteses
+  const modelo = v => { const p = v.produtoId && S.produtos.find(x => x.id === v.produtoId); const nome = p ? p.nome : String(v.produtoNome || "Sem peça").replace(/\s*\([^)]*\)\s*$/, "").trim() || "Sem peça"; return {k: p ? "id:" + p.id : "n:" + semAc(nome), nome}; };
+  for(const v of c.vs){ const m = modelo(v); const t = (top[m.k] ||= {nome:m.nome, n:0, receita:0, lucro:0}); const vc = vendaCalc(v); t.n += num(v.qtd); t.receita += vc.receita; t.lucro += vc.lucro; }
+  const topArr = Object.values(top).sort((a,b) => b.n - a.n || b.receita - a.receita).slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
   const ch = chartLucro();
   const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
   const dreRow = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
