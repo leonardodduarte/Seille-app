@@ -23,7 +23,7 @@ input,select,textarea{font-size:16px!important}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=6"></script>
+<script src="shim.js?v=7"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -1319,7 +1319,7 @@ S.planilha = null; let planilhaLendo = false, planilhaUlt = 0;
 async function lerPlanilha(forcar){
   if(planilhaLendo || !window.seilleFuncao) return; planilhaLendo = true; planilhaUlt = Date.now();
   try{ S.planilha = await window.seilleFuncao("planilha", "sincronizar", {forcar: !!forcar}); if(forcar) toast("Planilha atualizada"); }
-  catch(e){ S.planilha = e?.code === "sem_funcao" ? {semFuncao: true} : {erro: e?.message || "Não foi possível ler a planilha.", ultimaLeitura: e?.ultimaLeitura}; if(forcar) toast("Não foi possível ler a planilha"); }
+  catch(e){ S.planilha = e?.code === "sem_funcao" ? {semFuncao: true} : e?.code === "sem_conexao" ? {erro: "O app não conseguiu falar com a função planilha. Confira no Supabase se a função existe com o nome planilha e se 'Verify JWT' está desligado nela. Se estiver tudo certo, verifique a internet e toque em Atualizar agora."} : e?.code === "not_granted" ? {erro: "Sua conta não está na lista de membros."} : {erro: e?.message || "Não foi possível ler a planilha.", ultimaLeitura: e?.ultimaLeitura}; if(forcar) toast("Não foi possível ler a planilha"); }
   planilhaLendo = false; if(curView() === "ajustes") render();
 }
 function painelPlanilha(){
