@@ -33,7 +33,7 @@ jobs:
 
       # As duas funções conferem sozinhas quem é membro e a assinatura da Nuvemshop, por isso sem verificação de JWT do Supabase
       - name: Publicar nuvemshop
-        run: supabase functions deploy nuvemshop --project-ref "$PROJECT_REF" --no-verify-jwt
+        run: supabase functions deploy nuvemshop --project-ref "$PROJECT_REF" --no-verify-jwt --yes
 
       - name: Publicar planilha
-        run: supabase functions deploy planilha --project-ref "$PROJECT_REF" --no-verify-jwt
+        run: supabase functions deploy planilha --project-ref "$PROJECT_REF" --no-verify-jwt --yes
