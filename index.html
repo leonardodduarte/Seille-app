@@ -1497,7 +1497,7 @@ function bindAjustes(){
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const o = {}; for(const key of Object.keys(CFG_DEF)) o[key] = num(form.elements[key].value);
-    try{ await S.db.doc("config/geral").set(o); toast("Ajustes salvos"); } catch(err){ toast("Não foi possível salvar os ajustes"); }
+    try{ await S.db.doc("config/geral").set({...S.config, ...o}); toast("Ajustes salvos"); } catch(err){ toast("Não foi possível salvar os ajustes"); }
   });
   const rm = $("#rmex");
   if(rm) rm.onclick = async () => {
@@ -1812,6 +1812,17 @@ function vColecoes(){
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }
 const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, ajustes:vAjustes};
+// Cadastro inicial (uma vez só): custo fixo da agência de gestão de tráfego, R$ 2.070/mês desde jan/2026.
+// Usa um código fixo para nunca duplicar, e uma marcação no config para não recriar se for apagado depois.
+let semeado = false;
+async function semearGestao(){
+  try{
+    if(S.config.gestaoSemeada || S.fixos.some(f => f.categoria === CAT_GESTAO)) return;
+    await S.db.collection("fixos").doc("gestao-trafego").set({nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: "2026-01", fim: "", criadoEm: new Date().toISOString()});
+    await S.db.doc("config/geral").set({...S.config, gestaoSemeada: true});
+    toast("Custo da gestão de tráfego (R$ 2.070/mês desde jan/2026) cadastrado");
+  }catch(e){ semeado = false; }
+}
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
@@ -1822,6 +1833,7 @@ function render(){
   $("#sheet").hidden = true;
   $("#mes").value = MES;
   if(S.loaded.size < NLOAD && !S.failed){ return; }
+  if(!semeado && S.db && !S.failed){ semeado = true; semearGestao(); }
   // keep config form edits from being wiped while typing
   if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
   if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
