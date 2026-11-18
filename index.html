@@ -823,6 +823,7 @@ function resumoRapido(){
   const abas = [["hoje","Hoje"],["ontem","Ontem"],["semana","Esta semana"]].map(([k,l]) => `<button class="${RAPIDO===k?"on":""}" data-rapidoper="${k}">${l}</button>`).join("");
   return `<div class="rapido">
     <div class="rcards">${card(emb, "Por embalar", "emb")}${card(env, "Por enviar", "env")}</div>
+    ${conferindo ? `<p class="sub" style="margin:0"><span class="spin"></span>Conferindo os status com a Nuvemshop… pode levar alguns minutos.</p>` : `<p class="sub" style="margin:0">Os status seguem a Nuvemshop. <button class="lnk" data-conferir>Conferir agora</button></p>`}
     <div class="seg">${abas}</div>
     <div class="rnums">
       <div><span>Vendas</span><b>${gs.length}</b></div>
@@ -1433,6 +1434,24 @@ function vTrafego(){
   </table></div></details>`;
 }
 
+// Confere com a Nuvemshop os pedidos que o app ainda vê como em aberto (por embalar / por enviar):
+// busca de novo desde o mais antigo deles, para o status ficar igual ao da loja. No máximo a cada 6 horas.
+let conferindo = false;
+async function conferirAbertos(forcar){
+  if(conferindo || !window.seilleNuvem) return;
+  const abertos = S.vendas.filter(v => v.nuvemshopId && ["Recebido","Em produção","Pronto"].includes(v.status));
+  if(!abertos.length) return;
+  let ult = 0; try{ ult = +localStorage.getItem("seilleConferido") || 0; }catch(_){}
+  if(!forcar && Date.now() - ult < 6 * 3600e3) return;
+  const desde = abertos.map(v => v.data).filter(Boolean).sort()[0];
+  conferindo = true; if(curView() === "painel") render();
+  try{
+    await window.seilleNuvem.chamar("sincronizar", {desde});
+    try{ localStorage.setItem("seilleConferido", String(Date.now())); }catch(_){}
+    if(forcar) toast("Pedidos conferidos com a Nuvemshop");
+  }catch(e){ if(forcar) toast("Não foi possível conferir agora. Tente mais tarde."); }
+  conferindo = false; render();
+}
 S.planilha = null; let planilhaLendo = false, planilhaUlt = 0;
 async function lerPlanilha(forcar){
   if(planilhaLendo || !window.seilleFuncao) return; planilhaLendo = true; planilhaUlt = Date.now();
@@ -2169,6 +2188,7 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  if(e.target.closest("[data-conferir]")){ conferirAbertos(true); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
   const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
@@ -2263,6 +2283,7 @@ render();
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
+  setTimeout(() => conferirAbertos(false), 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {
