@@ -23,7 +23,7 @@ input,select,textarea{font-size:16px!important}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=5"></script>
+<script src="shim.js?v=6"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -380,7 +380,7 @@ const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer
 const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
 const POR_PECA = "Produção por peça";
 const FORMAS = ["Pix","Transferência","Dinheiro","Boleto / guia"];
-const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos"];
+const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos","metas"];
 const TIPOS_IMP = ["DAS – Simples Nacional","DAS-MEI","ICMS / DIFAL","ISS","IRPJ / CSLL","PIS / COFINS","Parcelamento de impostos","Outro imposto"];
 const CAT_COL = ["Fotógrafo","Vídeo maker","Modelos","Maquiagem e cabelo","Locação do espaço","Styling e produção de moda","Cenografia e objetos","Transporte","Alimentação","Edição e tratamento de imagens","Peças piloto do lançamento","Divulgação do lançamento","Outros"];
 const STATUS_COL = ["Planejamento","Em produção","Lançada","Encerrada"];
@@ -388,7 +388,7 @@ const STATUS_COL_CLS = {"Planejamento":"", "Em produção":"acc", "Lançada":"go
 let COLSEL = "";
 const NLOAD = COLS.length + 1;
 
-const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], impostos:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
+const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], impostos:[], metas:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
 let PAGF = "";
 let MES = today().slice(0,7);
 let ANO = false; // true = "Ano todo" (Painel e Pedidos mostram o ano inteiro)
@@ -439,6 +439,17 @@ const fixoNoMes = (f, ym) => (!f.inicio || f.inicio <= ym) && (!f.fim || f.fim >
 
 // Resultado de um período qualquer: vendas, anúncios e despesas pela data; custos fixos proporcionais aos dias;
 // imposto pago do mês proporcional à parte do faturamento do mês que caiu no período
+// Meta de faturamento do mês: a da planilha de planejamento, se houver; senão, a de Ajustes
+const metaDe = ym => { const m = S.metas.find(x => x.id === ym); return m && num(m.meta) > 0 ? num(m.meta) : num(S.config.metaFaturamento); };
+const metaDaPlanilha = ym => S.metas.some(x => x.id === ym && num(x.meta) > 0);
+function metaRecorte(){
+  const p = periodo();
+  if(p){ let t = 0; for(let ym = p.de.slice(0,7); ym <= p.ate.slice(0,7); ym = addYm(ym,1)){ const dm = new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(), ini = ym + "-01", fim = ym + "-" + String(dm).padStart(2,"0"); const a = p.de > ini ? p.de : ini, b = p.ate < fim ? p.ate : fim; t += metaDe(ym) * Math.max(0, daysBetween(a,b) + 1) / dm; } return t; }
+  if(anoTodo()){ const a = MES.slice(0,4); return Array.from({length:12}, (_,i) => metaDe(a + "-" + String(i+1).padStart(2,"0"))).reduce((x,y) => x + y, 0); }
+  return metaDe(MES);
+}
+// Sessões do site no recorte (da planilha)
+function sessoesRecorte(){ let n = 0, tem = false; for(const m of S.metas) for(const [d, v] of Object.entries(m.sessoesDia || {})) if(noRecorte(d)){ n += num(v); tem = true; } return tem ? n : null; }
 function calcPeriodo(de, ate){
   const dentro = d => !!d && d >= de && d <= ate;
   const vs = S.vendas.filter(v => dentro(v.data) && ativa(v));
@@ -468,7 +479,7 @@ function calcPeriodo(de, ate){
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   return {ym: de + "_" + ate, vs, meses, receita, bruto, descontos, cpv, taxas, gateway: gw, gwEstimado: vs.some(v => !temTaxaReal(v)), imposto, impostoEst: receita*num(S.config.imposto)/100, impostoPago, impostoReal, impostoMisto: impostoReal && impostoEstMeses,
     frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
-    roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN, equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN, dias: daysBetween(de, ate) + 1};
+    roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN, equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN, dias: daysBetween(de, ate) + 1};
 }
 function calcAno(ano){
   const ms = Array.from({length:12}, (_,i) => calcMes(ano + "-" + String(i+1).padStart(2,"0")));
@@ -478,7 +489,7 @@ function calcAno(ano){
   o.impostoReal = ms.some(m => m.impostoReal); o.impostoMisto = o.impostoReal && ms.some(m => !m.impostoReal && m.vs.length);
   o.mcPct = o.receita ? o.mc/o.receita : NaN; o.margem = o.receita ? o.lucro/o.receita : NaN; o.ticket = o.nPed ? o.receita/o.nPed : 0;
   const receitaAds = o.vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v) => a + vendaCalc(v).receita, 0);
-  o.roas = o.ads ? receitaAds/o.ads : NaN; o.cac = o.nPed ? o.ads/o.nPed : NaN;
+  o.roas = o.ads ? (receitaAds || o.receita)/o.ads : NaN; o.roasGeral = !receitaAds; o.cac = o.nPed ? o.ads/o.nPed : NaN;
   o.equilibrio = o.mcPct > 0 ? (o.fixos + o.ads + o.avulsos + o.equipe + o.colecao)/o.mcPct : NaN;
   return o;
 }
@@ -505,7 +516,7 @@ function calcMes(ym){
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   const mcPct = receita ? mc/receita : NaN;
   return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
-    nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? receitaAds/ads : NaN, cac: nPed ? ads/nPed : NaN,
+    nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN,
     equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
 }
 const pagYm = p => p.competencia || (p.data||"").slice(0,7);
@@ -905,7 +916,8 @@ function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
   const per = rotuloRecorte();
-  const meta = num(S.config.metaFaturamento) * (P ? c.dias/30.4375 : A ? 12 : 1);
+  const meta = metaRecorte(), metaPl = P || A ? S.metas.some(m => num(m.meta) > 0) : metaDaPlanilha(MES);
+  const sess = sessoesRecorte();
   const cmp = comparaAnoAnterior(), ca = cmp.atual, cp = cmp.ant;
   const vsAnt = (a, b) => cmp.temAnt ? `${cmp.varia(a, b)} vs. ${brl(b)} em ${cmp.rot}` : "";
   const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status))
@@ -920,13 +932,13 @@ function vPainel(){
   <div class="seclbl">Resultado de ${per}<span>${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span></div>
   <div class="kpis">
     <div class="kpi"><span class="l">Faturamento</span><span class="v num">${brl(c.receita)}</span>
-      <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta) : ""}</span>
+      <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta)+(metaPl?" (planilha)":"") : ""}</span>
       <span class="s cmp">${cmp.temAnt ? vsAnt(ca.receita, cp.receita) : `Sem vendas no app de ${cmp.rot} para comparar`}</span>
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
     <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
     <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
-    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
-    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${sess ? `<span class="s">conversão ${pct(c.nPed/sess, 2)} · ${intf(sess)} sessões</span>` : ""}${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
+    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
   ${painelEstados()}
@@ -1295,13 +1307,33 @@ function vTrafego(){
     <tbody>${rows.length ? rows.map(([k,v])=>{const r = v.inv? v.rec/v.inv : NaN; const min = c.mcPct>0?1/c.mcPct:Infinity; return `<tr><td><b>${esc(k)}</b></td><td class="n">${brl(v.inv)}</td><td class="n">${intf(v.cli)}</td><td class="n">${v.cli?brl(v.inv/v.cli):"—"}</td><td class="n">${v.imp?pct(v.cli/v.imp,2):"—"}</td><td class="n">${v.ped.size}</td><td class="n">${brl(v.rec)}</td><td class="n">${isFinite(r)?`<span class="pill ${r>=min?"good":"bad"}">${r.toLocaleString("pt-BR",{maximumFractionDigits:2})}×</span>`:"—"}</td><td class="n">${v.ped.size?brl(v.inv/v.ped.size):"—"}</td></tr>`}).join("")
       : emptyRow(9,"Sem investimento lançado","Lance quanto foi gasto no Meta Ads, Google Ads ou com influenciadoras.")}</tbody>
   </table></div></div>
+  ${S.trafego.some(t => t.fonte === "planilha") ? `<p class="sub" style="margin:0">Os lançamentos marcados com <b>planilha</b> vêm da planilha de planejamento e são atualizados sozinhos. Para mudar esses valores, altere na planilha.</p>` : ""}
   <div class="panel"><h3>Lançamentos</h3><div class="tw"><table>
     <thead><tr><th>Data</th><th>Plataforma</th><th>Campanha</th><th class="n">Impressões</th><th class="n">Cliques</th><th class="n">Investido</th></tr></thead>
-    <tbody>${ts.length ? ts.map(t=>`<tr class="click" data-edit="trafego" data-id="${t.id}"><td>${dBR(t.data)}</td><td>${esc(t.plataforma)}${exBadge(t)}</td><td>${esc(t.campanha||"")}</td><td class="n">${intf(t.impressoes)}</td><td class="n">${intf(t.cliques)}</td><td class="n">${brl(t.investimento)}</td></tr>`).join("")
+    <tbody>${ts.length ? ts.map(t=>`<tr class="click" data-edit="trafego" data-id="${t.id}"><td>${dBR(t.data)}</td><td>${esc(t.plataforma)}${exBadge(t)}${t.fonte === "planilha" ? ` <span class="tag" style="color:var(--muted)">planilha</span>` : ""}</td><td>${esc(t.campanha||"")}</td><td class="n">${intf(t.impressoes)}</td><td class="n">${intf(t.cliques)}</td><td class="n">${brl(t.investimento)}</td></tr>`).join("")
       : emptyRow(6,"Nenhum lançamento neste mês","Pode lançar por dia, por semana ou o total do mês.")}</tbody>
   </table></div></div>`;
 }
 
+S.planilha = null; let planilhaLendo = false, planilhaUlt = 0;
+async function lerPlanilha(forcar){
+  if(planilhaLendo || !window.seilleFuncao) return; planilhaLendo = true; planilhaUlt = Date.now();
+  try{ S.planilha = await window.seilleFuncao("planilha", "sincronizar", {forcar: !!forcar}); if(forcar) toast("Planilha atualizada"); }
+  catch(e){ S.planilha = e?.code === "sem_funcao" ? {semFuncao: true} : {erro: e?.message || "Não foi possível ler a planilha.", ultimaLeitura: e?.ultimaLeitura}; if(forcar) toast("Não foi possível ler a planilha"); }
+  planilhaLendo = false; if(curView() === "ajustes") render();
+}
+function painelPlanilha(){
+  const p = S.planilha, dt = iso => iso ? new Date(iso).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}) : "—";
+  const mesesTxt = ms => (ms||[]).map(ym => ymShort(ym)).join(", ");
+  let corpo;
+  if(!p) corpo = `<p class="sub" style="margin:0">${planilhaLendo ? `<span class="spin"></span>Lendo a planilha…` : "A planilha é lida ao abrir o app e a cada 10 minutos."}</p>`;
+  else if(p.semFuncao) corpo = `<p class="sub" style="margin:0">A função <b>planilha</b> ainda não foi publicada no Supabase.</p>`;
+  else corpo = `${p.erro ? `<div class="banner warn">${esc(p.erro)}</div>` : ""}
+    <p class="sub" style="margin:0">Última leitura: <b>${dt(p.ultimaLeitura)}</b>${p.meses?.length ? ` · meses: ${esc(mesesTxt(p.meses))} · ${p.lancamentos} lançamentos de tráfego (${brl(p.investido)})` : ""}.</p>
+    <p class="sub" style="margin:0">Da planilha vêm o investimento diário em Facebook e Google (aba Tráfego pago), a META de cada mês (Painel) e as sessões do site (conversão).</p>`;
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Planilha de planejamento</h3>${corpo}
+    <div><button class="btn" id="plagora" ${planilhaLendo ? "disabled" : ""}>Atualizar agora</button></div></div>`;
+}
 S.nuvem = null; let nuvemCarregando = false;
 async function carregaNuvem(){
   if(nuvemCarregando || !window.seilleNuvem) return; nuvemCarregando = true;
@@ -1338,10 +1370,11 @@ function vAjustes(){
       ${f("taxaGateway","Taxa do gateway / meio de pagamento (%)","Média cobrada por venda no cartão e Pix")}
       ${f("imposto","Impostos sobre a venda (%)","Ex.: alíquota do Simples Nacional")}
       ${f("margemAlvo","Meta de margem de contribuição (%)","Usada para sugerir o preço de cada peça","1")}
-      ${f("metaFaturamento","Meta de faturamento mensal (R$)","Aparece como barra de progresso no painel","1")}
+      ${f("metaFaturamento","Meta de faturamento mensal (R$)","Usada nos meses em que a planilha não tem a META","1")}
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
+  ${painelPlanilha()}
   ${painelNuvem()}
   <div class="panel" style="display:flex;flex-direction:column;gap:12px">
     <h3>Sua conta</h3>
@@ -1362,6 +1395,7 @@ function vAjustes(){
 
 function bindAjustes(){
   const form = $("#cfg"); if(!form) return;
+  const pla = $("#plagora"); if(pla) pla.onclick = () => { pla.disabled = true; pla.innerHTML = `<span class="spin"></span>Lendo…`; lerPlanilha(true); };
   const ncon = $("#nsconectar");
   if(ncon) ncon.onclick = async () => {
     ncon.disabled = true; ncon.textContent = "Abrindo a Nuvemshop…";
@@ -1795,6 +1829,9 @@ render();
       render();
     }, err => { done(col); S.failed = "Parte dos dados não pôde ser carregada. Recarregue a página mais tarde."; render(); });
   }
+  setTimeout(() => lerPlanilha(false), 1500);
+  setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {
     S.config = {...CFG_DEF, ...(snap.exists ? snap.data() : {})};
     done("config"); render();

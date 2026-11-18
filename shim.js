@@ -111,6 +111,14 @@
     },
   };
 
+  // Chamada genérica às funções do Supabase (ex.: "planilha")
+  window.seilleFuncao = async (nome, acao, extra = {}) => {
+    if (!sb) throw { code: "unavailable" };
+    const { data, error } = await sb.functions.invoke(nome, { body: { acao, ...extra } });
+    if (error) { let j = {}; try { j = await error.context.json(); } catch {} throw { ...j, code: j.code || (error.context?.status === 404 ? "sem_funcao" : "unavailable"), status: error.context?.status, message: j.erro || j.message || String(error.message || error) }; }
+    return data;
+  };
+
   const CAPS = { db, assets, sample, downloads };
   window.claude = { use: async nome => { if (!sb) return null; await prontoP; return CAPS[nome] ?? null; } };
 

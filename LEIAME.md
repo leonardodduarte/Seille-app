@@ -49,6 +49,15 @@ Cada pedido pago na loja entra sozinho em **Pedidos**, com cliente, cidade, esta
 
 Pedidos aguardando pagamento não entram. Cancelados e estornados ficam com status **Cancelado**. O custo da peça vem da ficha técnica quando o nome do produto na loja for igual ao da aba Peças; o frete pago, o custo e a origem podem ser ajustados no pedido e não são sobrescritos.
 
+## 2c. Planilha de planejamento (tráfego pago e metas)
+
+O app lê a planilha "Planejamento/Projeção" (uma aba por mês: JANEIRO … DEZEMBRO) e traz o investimento diário em Facebook e Google, a META de cada mês e as sessões do site.
+
+1. A planilha precisa estar em **Compartilhar → Acesso geral → Qualquer pessoa com o link: Leitor**.
+2. Supabase → **Edge Functions → Secrets**: crie `PLANILHA_ID` com o código da planilha (o trecho entre `/d/` e `/edit` no link). Não coloque esse código no repositório, que é público.
+3. **Deploy a new function → Via Editor**, nome `planilha`, cole `supabase/functions/planilha/index.ts`, desligue **Verify JWT** e publique.
+4. No app, **Ajustes → Planilha de planejamento → Atualizar agora**. Depois disso a leitura é automática ao abrir o app e a cada 10 minutos.
+
 ## 3. Publicar o app (GitHub Pages)
 
 1. No repositório do GitHub: **Settings** → **Pages**.
@@ -84,4 +93,5 @@ No Supabase, **Database** → **Backups** mostra os backups diários automático
 - `supabase/schema.sql` — criação do banco e das regras de acesso
 - `supabase/functions/ler-comprovante/index.ts` — função que chama o Claude
 - `supabase/functions/nuvemshop/index.ts` — ligação com a loja Nuvemshop
+- `supabase/functions/planilha/index.ts` — leitura da planilha de planejamento
 - `vendor/` — bibliotecas usadas pelo app (Supabase e leitor de PDF)
