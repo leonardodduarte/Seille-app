@@ -1611,6 +1611,155 @@ function normaliza(r){
 }
 const ERR_IA = {sem_chave:"A leitura com IA ainda não foi ativada: falta cadastrar a chave ANTHROPIC_API_KEY nos Secrets do Supabase.", not_granted:"A leitura automática não está liberada para esta conta.", rate_limited:"Muitas leituras ao mesmo tempo. Aguarde um minuto e toque em Tentar de novo.", images_unavailable:"Esta visualização não aceita imagens. Envie o PDF original do comprovante.", image_rejected:"A imagem não pôde ser lida. Tente uma foto em JPG ou PNG."};
 let lendo = false;
+// ---------- leitura grátis (sem IA): regras para DARF/DAS, boletos, comprovantes e holerites ----------
+const MESES_NOME = ["janeiro","fevereiro","marco","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const dinheiro = s => { const n = parseFloat(String(s).replace(/\./g,"").replace(",", ".")); return isFinite(n) ? n : 0; };
+const RE_VALOR = /(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})(?!\d)/g;
+const RE_DATA = /(\d{2})[\/.-](\d{2})[\/.-](\d{4})/g;
+const isoDe = (d,m,a) => `${a}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+function valoresEm(t){ return [...t.matchAll(RE_VALOR)].map(m => dinheiro(m[1])).filter(v => v > 0); }
+function datasEm(t){ return [...t.matchAll(RE_DATA)].filter(m => +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= 31).map(m => isoDe(m[1], m[2], m[3])); }
+// primeiro valor/data que aparece logo depois de um rótulo
+function depois(t, re, tipo, alcance = 160){
+  const m = re.exec(t); if(!m) return null;
+  const trecho = t.slice(m.index + m[0].length, m.index + m[0].length + alcance);
+  if(tipo === "valor"){ const v = valoresEm(trecho); return v.length ? v[0] : null; }
+  if(tipo === "data"){ const d = datasEm(trecho); return d.length ? d[0] : null; }
+  return trecho;
+}
+// "10/2026", "outubro/2026", "31/10/2026" → "2026-10"
+function competenciaDe(trecho){
+  if(!trecho) return "";
+  const s = semAc(trecho);
+  let m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(s); if(m) return `${m[3]}-${m[2]}`;
+  m = /(\d{1,2})\/(\d{4})/.exec(s); if(m && +m[1] >= 1 && +m[1] <= 12) return `${m[2]}-${String(m[1]).padStart(2,"0")}`;
+  m = new RegExp(`(${MESES_NOME.join("|")})\\s*(?:\\/|de)?\\s*(\\d{4})`).exec(s); if(m) return `${m[2]}-${String(MESES_NOME.indexOf(m[1])+1).padStart(2,"0")}`;
+  return "";
+}
+// ----- boletos: a linha digitável traz valor e vencimento; só aceita se os dígitos verificadores baterem -----
+const mod10 = num => { let s = 0, p = 2; for(let i = num.length - 1; i >= 0; i--){ let r = +num[i] * p; s += r > 9 ? Math.floor(r/10) + r % 10 : r; p = p === 2 ? 1 : 2; } return (10 - s % 10) % 10; };
+const mod11Boleto = num => { let s = 0, p = 2; for(let i = num.length - 1; i >= 0; i--){ s += +num[i] * p; p = p === 9 ? 2 : p + 1; } const r = 11 - s % 11; return (r === 0 || r === 10 || r === 11) ? 1 : r; };
+function vencimentoDoFator(f){
+  if(!f) return "";
+  const base = new Date("1997-10-07T12:00:00"), novo = new Date("2025-02-22T12:00:00");
+  const c1 = new Date(base.getTime() + f*864e5), c2 = new Date(novo.getTime() + (f-1000)*864e5);
+  const hoje = Date.now(); const d = Math.abs(c1 - hoje) < Math.abs(c2 - hoje) ? c1 : c2;
+  return d.toISOString().slice(0,10);
+}
+function lerLinhaDigitavel(t){
+  const limpo = t.replace(/[^\d\s.]/g, " ");
+  // boleto bancário (47 dígitos)
+  for(const m of limpo.matchAll(/(\d{5})[.\s]?(\d{5})\s+(\d{5})[.\s]?(\d{6})\s+(\d{5})[.\s]?(\d{6})\s+(\d)\s+(\d{14})/g)){
+    const d = m.slice(1).join("");
+    const c1 = d.slice(0,9), c2 = d.slice(10,20), c3 = d.slice(21,31);
+    if(mod10(c1) !== +d[9] || mod10(c2) !== +d[20] || mod10(c3) !== +d[31]) continue;
+    const barras = d.slice(0,4) + d[32] + d.slice(33,47) + d.slice(4,9) + d.slice(10,20) + d.slice(21,31);
+    if(mod11Boleto(barras.slice(0,4) + barras.slice(5)) !== +barras[4]) continue;
+    return {valor: +d.slice(37,47)/100, vencimento: vencimentoDoFator(+d.slice(33,37)), ok: true};
+  }
+  // contas de consumo e tributos (48 dígitos, começam com 8)
+  for(const m of limpo.matchAll(/(8\d{10})[\s-]?(\d)\s+(\d{11})[\s-]?(\d)\s+(\d{11})[\s-]?(\d)\s+(\d{11})[\s-]?(\d)/g)){
+    const blocos = [[m[1],m[2]],[m[3],m[4]],[m[5],m[6]],[m[7],m[8]]];
+    const ref = m[1][2];
+    const dv = b => ref === "6" || ref === "7" ? mod10(b) : (()=>{ let s=0,p=2; for(let i=b.length-1;i>=0;i--){ s+=+b[i]*p; p=p===9?2:p+1; } const r=s%11; return r===0||r===1?0:11-r; })();
+    if(!blocos.every(([b,v]) => dv(b) === +v)) continue;
+    const barras = blocos.map(b => b[0]).join("");
+    return {valor: +barras.slice(4,15)/100, vencimento: "", ok: true};
+  }
+  return null;
+}
+// ----- categoria pelo nome de quem recebe -----
+const CAT_PALAVRAS = [
+  [/aluguel|imobiliaria|locacao|locador/, "Aluguel"], [/condominio|administradora de condom/, "Condomínio"], [/iptu/, "IPTU"],
+  [/energia|eletric|celesc|enel|cemig|copel|light s|coelba|cpfl|neoenergia|equatorial/, "Energia elétrica"],
+  [/agua|saneamento|casan|sabesp|copasa|sanepar|cedae|embasa/, "Água"],
+  [/internet|telecom|vivo|claro|tim s|oi s|net servicos|fibra/, "Internet e telefone"], [/seguro/, "Seguros"],
+  [/contabil|contador|contabilidade/, "Contador"], [/nuvemshop|tiendanube|loja virtual/, "Plataforma do e-commerce"],
+  [/tecido|malha|tecelagem|aviamento|botao|linha|ziper/, "Tecido / estoque"], [/embalag|caixa|sacola|etiqueta/, "Embalagens em lote"],
+  [/manutencao|maquina|costura (?:industrial|ltda)/, "Manutenção de máquinas"], [/tarifa|banco|bancaria/, "Taxas bancárias"],
+];
+function categoriaPor(texto){ const s = semAc(texto); for(const [re, cat] of CAT_PALAVRAS) if(re.test(s)) return cat; return ""; }
+function funcionariaEm(texto){
+  const s = semAc(texto);
+  return S.funcionarias.find(f => { const p = semAc(f.nome).split(/\s+/).filter(x => x.length > 2); return p.length && p.slice(0, 2).every(x => s.includes(x)); });
+}
+const COD_IMPOSTO = [["2089","IRPJ"],["2372","CSLL"],["8109","PIS"],["6912","PIS"],["2172","COFINS"],["5856","COFINS"],["0561","IRRF (retido na fonte)"],["0588","IRRF (retido na fonte)"],["1708","IRRF (retido na fonte)"],["3208","IRRF (retido na fonte)"],["1082","INSS / DCTFWeb"],["1099","INSS / DCTFWeb"],["1138","INSS / DCTFWeb"],["1646","INSS / DCTFWeb"]];
+function base(extra){ return {tipoDocumento:"documento", destino:"variavel", descricao:"", favorecido:"", valor:0, data:today(), pago:true, competencia:"", funcionariaId:null, tipoPagamento:"Salário", formaPagamento:"Pix", categoria:null, fixoId:null, colecaoId:null, categoriaColecao:null, plataforma:null, tipoImposto:null, confianca:0.8, observacao:"", ...extra}; }
+const pagoEm = t => depois(t, /(?:data (?:do |de )?(?:pagamento|arrecadacao|debito|transacao|efetivacao)|pago em|realizad[oa] em|efetuad[oa] em)/i, "data");
+function lerSemIA(texto){
+  const t = texto.replace(/\s+/g, " "), s = semAc(t);
+  const dataPg = pagoEm(s), temComprovante = /comprovante|autenticacao|pagamento efetuado|pagamento realizado|transacao (?:efetuada|concluida)|recibo/.test(s);
+  // 1) guias de imposto
+  const ehDas = /documento de arrecadacao do simples nacional|\bdas\b|simples nacional/.test(s), ehMei = /simei|\bmei\b|microempreendedor/.test(s);
+  const ehDarf = /documento de arrecadacao de receitas federais|\bdarf\b/.test(s), ehDctf = /dctfweb|contribuic(?:ao|oes) previdenciaria/.test(s);
+  const ehIcms = /\bicms\b|difal|sefaz|secretaria (?:de estado )?da fazenda/.test(s), ehIss = /\biss\b|issqn|imposto sobre servicos/.test(s);
+  if(ehDarf || ehDas || ehDctf || ehIcms || ehIss){
+    let tipo = ehDas ? (ehMei ? "DAS-MEI" : "DAS – Simples Nacional") : ehDctf ? "INSS / DCTFWeb" : ehIcms ? "ICMS / DIFAL" : ehIss ? "ISS" : null;
+    let codigo = "";
+    if(!tipo || ehDarf){ for(const [c, n] of COD_IMPOSTO) if(new RegExp(`(?:^|\\D)${c}(?:\\D|$)`).test(s)){ tipo = n; codigo = c; break; } }
+    if(/parcelamento/.test(s)) tipo = "Parcelamento de impostos";
+    const comp = competenciaDe(depois(s, /periodo de apuracao|competencia|mes de referencia|apuracao/, "texto", 40));
+    const total = depois(s, /valor total(?: do documento)?|total a (?:pagar|recolher)|valor a pagar|valor do documento/, "valor") ?? Math.max(0, ...valoresEm(t));
+    const venc = depois(s, /pagar (?:este documento )?ate|data de vencimento|vencimento/, "data");
+    const pago = !!dataPg || /comprovante de arrecadacao|autenticacao/.test(s);
+    return base({tipoDocumento: ehDas ? "guia DAS" : ehDarf ? "DARF" : "guia de imposto", destino:"imposto", tipoImposto: tipo || "Outro imposto",
+      valor: total, competencia: comp, pago, data: (pago ? dataPg : venc) || venc || today(),
+      descricao: [ehDarf ? "DARF" : ehDas ? "DAS" : "Guia", codigo, tipo, comp ? "apuração " + comp.slice(5) + "/" + comp.slice(0,4) : ""].filter(Boolean).join(" – "),
+      confianca: total && comp ? 0.85 : 0.5, observacao: comp ? "" : "Confira o mês de referência (período de apuração)."});
+  }
+  // 2) holerite
+  if(/holerite|contracheque|recibo de pagamento de salario|demonstrativo de pagamento|folha mensal|liquido a receber/.test(s)){
+    const f = funcionariaEm(t);
+    const liquido = depois(s, /liquido a receber|valor liquido|total liquido|liquido/, "valor");
+    const comp = competenciaDe(depois(s, /referencia|competencia|mes\/ano|periodo/, "texto", 40)) || competenciaDe(s.slice(0, 400));
+    return base({tipoDocumento:"holerite", destino:"funcionaria", funcionariaId: f?.id || null, favorecido: f?.nome || "", tipoPagamento:"Salário", formaPagamento:"Transferência",
+      valor: liquido || 0, competencia: comp, data: dataPg || today(), descricao: "Salário" + (comp ? " de " + comp.slice(5) + "/" + comp.slice(0,4) : ""),
+      confianca: liquido && f ? 0.85 : 0.5, observacao: f ? "Holerite não prova o pagamento: confira a data." : "Escolha a funcionária: o nome do holerite não bateu com o cadastro."});
+  }
+  // 3) boleto (com ou sem comprovante)
+  const linha = lerLinhaDigitavel(t);
+  const benef = (depois(t, /benefici[aá]rio(?: final)?|cedente|favorecido|empresa|raz[aã]o social/i, "texto", 80) || "").replace(/^[:\s-]+/, "").replace(/\s*(?:CNPJ|CPF|Ag[eê]ncia|Endere[cç]o|Data|Valor).*$/i, "").trim().slice(0, 60);
+  if(linha || /boleto|linha digitavel|codigo de barras|nosso numero/.test(s) || (/beneficiario|cedente/.test(s) && /vencimento/.test(s))){
+    const cat = categoriaPor(benef + " " + t.slice(0, 300)) || "Outros";
+    const fixo = S.fixos.find(x => x.categoria === cat);
+    const valor = linha?.valor || depois(s, /valor (?:do documento|cobrado|pago|total)|\(=\) valor|valor/, "valor") || 0;
+    const venc = linha?.vencimento || depois(s, /vencimento/, "data");
+    const pago = temComprovante && !!(dataPg || /pago/.test(s));
+    return base({tipoDocumento: pago ? "comprovante de pagamento de boleto" : "boleto", destino: fixo ? "fixo" : "variavel", fixoId: fixo?.id || null, categoria: cat,
+      favorecido: benef, valor, pago, data: (pago ? dataPg : venc) || today(), competencia: (venc || today()).slice(0,7), formaPagamento:"Boleto / guia",
+      descricao: [cat !== "Outros" ? cat : "", benef].filter(Boolean).join(" – ") || "Boleto",
+      confianca: linha ? 0.9 : 0.55, observacao: linha ? (pago ? "" : "É o boleto, não o comprovante: confira se já foi pago.") : "Não consegui conferir a linha digitável: confira o valor e o vencimento."});
+  }
+  // 4) comprovante de Pix / transferência
+  if(/pix|transferencia|\bted\b|\bdoc\b|comprovante/.test(s)){
+    const para = (depois(t, /(?:para|destino|recebedor|favorecido|nome do (?:favorecido|recebedor)|quem recebeu)\s*:?/i, "texto", 70) || "").replace(/^[:\s-]+/, "").replace(/\s*(?:CPF|CNPJ|Institui[cç][aã]o|Banco|Chave|Ag[eê]ncia|Conta|\*{3}).*$/i, "").trim().slice(0, 60);
+    const valor = depois(s, /valor(?: da transferencia| do pix| pago| transferido)?/, "valor") || Math.max(0, ...valoresEm(t));
+    const data = dataPg || datasEm(t)[0] || today();
+    const f = funcionariaEm(para) || funcionariaEm(t);
+    const forma = /pix/.test(s) ? "Pix" : "Transferência";
+    if(f) return base({tipoDocumento:"comprovante de " + forma, destino:"funcionaria", funcionariaId: f.id, favorecido: f.nome, valor, data, competencia: data.slice(0,7), formaPagamento: forma, tipoPagamento:"Salário", descricao:"Pagamento para " + f.nome, observacao:"Confira o tipo de pagamento (salário, adiantamento, extra…)."});
+    const cat = categoriaPor(para) || "Outros", fixo = S.fixos.find(x => x.categoria === cat);
+    return base({tipoDocumento:"comprovante de " + forma, destino: fixo ? "fixo" : "variavel", fixoId: fixo?.id || null, categoria: cat, favorecido: para, valor, data, competencia: data.slice(0,7), formaPagamento: forma,
+      descricao: [cat !== "Outros" ? cat : "", para].filter(Boolean).join(" – ") || "Pagamento", confianca: valor && para ? 0.75 : 0.5, observacao: cat === "Outros" ? "Escolha a categoria do custo." : ""});
+  }
+  return null;
+}
+// documento sem padrão conhecido: sugestão mínima para você completar
+function leituraGenerica(texto){
+  const t = texto.replace(/\s+/g, " "), vals = valoresEm(t), ds = datasEm(t);
+  return base({tipoDocumento:"documento", destino:"variavel", categoria: categoriaPor(t) || "Outros", valor: vals.length ? Math.max(...vals) : 0, data: ds[0] || today(),
+    descricao: "", confianca: 0.3, observacao: "Não reconheci o tipo do documento. Confira valor, data e onde lançar."});
+}
+// fotos: leitor de texto grátis que roda no aparelho (baixa ~15 MB na primeira vez)
+let ocrWorker = null;
+async function lerFoto(arquivo, it){
+  if(!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  if(!ocrWorker){ it.etapa = "Preparando o leitor de fotos (só na primeira vez)…"; render(); ocrWorker = await window.Tesseract.createWorker("por"); }
+  it.etapa = "Lendo o texto da foto…"; render();
+  const { data } = await ocrWorker.recognize(arquivo);
+  return data.text || "";
+}
+
 async function processaFila(){
   if(lendo) return; lendo = true;
   try{
@@ -1618,18 +1767,31 @@ async function processaFila(){
     while((it = S.fila.find(x => x.status === "aguardando"))){
       it.status = "lendo"; render();
       try{
-        if(!S.sample) throw {code:"sem_ia"};
         let text = "", img = null;
-        if(it.file.type === "application/pdf" || /\.pdf$/i.test(it.file.name)){ const r = await prepPdf(it.file); text = r.text.length >= 80 ? r.text : ""; img = r.img; it.thumb = URL.createObjectURL(r.img); }
+        const ehPdf = it.file.type === "application/pdf" || /\.pdf$/i.test(it.file.name);
+        if(ehPdf){ const r = await prepPdf(it.file); text = r.text.length >= 80 ? r.text : ""; img = r.img; it.thumb = URL.createObjectURL(r.img); }
         else if(it.file.type.startsWith("image/")) img = await prepImage(it.file);
         else throw {code:"tipo"};
-        const opts = {modelTier:"default"};
-        if(!text){ if(!S.sampleImg) throw {code:"images_unavailable"}; opts.images = [img]; }
-        it.sug = normaliza(await S.sample.json(promptFor(it.file.name, text), opts));
+        // 1) leitura grátis por regras (texto do PDF ou da foto)
+        if(!text){ try{ text = await lerFoto(img, it); }catch(e){ console.error(e); } }
+        let sug = text ? lerSemIA(text) : null;
+        it.porIA = false;
+        // 2) se não reconheceu, tenta a IA (só funciona se a chave estiver cadastrada)
+        if((!sug || sug.confianca < 0.5) && S.sample){
+          try{
+            const opts = {modelTier:"default"};
+            if(!text || !ehPdf){ if(S.sampleImg) opts.images = [img]; }
+            sug = await S.sample.json(promptFor(it.file.name, ehPdf ? text : ""), opts); it.porIA = true;
+          }catch(e){ if(e?.code !== "sem_chave" && e?.code !== "unavailable") console.error(e); }
+        }
+        if(!sug){ if(!text) throw {code:"sem_texto"}; sug = leituraGenerica(text); }
+        it.sug = normaliza(sug);
+        if(!it.porIA) it.sug.observacao = ["Lido automaticamente, sem IA. Confira antes de confirmar.", it.sug.observacao].filter(Boolean).join(" ");
+        it.etapa = "";
         it.status = "pronto";
       }catch(e){
         it.status = "erro";
-        it.err = e?.code === "sem_ia" ? "A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante." : e?.code === "tipo" ? "Envie foto (JPG, PNG) ou PDF." : (ERR_IA[e?.code] || "Não foi possível ler este arquivo. Tente de novo ou lance manualmente.");
+        it.err = e?.code === "sem_texto" ? "Não consegui ler o texto deste arquivo. Tente uma foto mais nítida, de frente e com boa luz, ou envie o PDF." : e?.code === "sem_ia" ? "A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante." : e?.code === "tipo" ? "Envie foto (JPG, PNG) ou PDF." : (ERR_IA[e?.code] || "Não foi possível ler este arquivo. Tente de novo ou lance manualmente.");
       }
       render();
     }
@@ -1654,7 +1816,7 @@ function avisos(it){
 function cardLeitor(it){
   const prev = `<div class="prev">${it.thumb ? `<img src="${it.thumb}" alt="">` : "PDF"}</div>`;
   const head = (pill) => `<div class="ftop"><span class="fn">${esc(it.file.name)}</span>${pill}</div>`;
-  if(it.status === "aguardando" || it.status === "lendo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill acc">${it.status==="lendo"?"lendo":"na fila"}</span>`)}<div class="ia"><span class="spin"></span>${it.status==="lendo" ? "O Claude está lendo o documento. Leva de 10 a 40 segundos." : "Aguardando a leitura dos arquivos anteriores."}</div></div></div>`;
+  if(it.status === "aguardando" || it.status === "lendo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill acc">${it.status==="lendo"?"lendo":"na fila"}</span>`)}<div class="ia"><span class="spin"></span>${it.status==="lendo" ? esc(it.etapa || "Lendo o documento…") : "Aguardando a leitura dos arquivos anteriores."}</div></div></div>`;
   if(it.status === "erro") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill bad">não lido</span>`)}<div class="err">${esc(it.err)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Remover</button><button class="btn pri" data-retry="${it.id}">Tentar de novo</button></div></div></div>`;
   if(it.status === "salvo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill good">lançado</span>`)}<div class="ia">${esc(it.msg)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Tirar da lista</button></div></div></div>`;
   const g = it.sug, k = it.id;
@@ -1728,12 +1890,12 @@ async function confirmaLeitor(id, btn){
 }
 function vLeitor(){
   const nP = S.fila.filter(x=>x.status==="pronto").length;
-  return `<div class="head"><div><h2>Adicionar documentos</h2><p>Envie comprovantes de Pix, holerites, contas de luz, internet, aluguel, condomínio, guias, faturas de anúncio e recibos de fotógrafo, modelos e demais custos de coleção. O Claude identifica o tipo, o valor, a data e para quem foi pago, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
-  ${S.sample === null ? `<div class="banner warn">A leitura automática não está disponível. Verifique a internet ou a configuração da função ler-comprovante.</div>` : ""}
+  return `<div class="head"><div><h2>Adicionar documentos</h2><p>Envie DARF, DAS, boletos (aluguel, condomínio, contas), comprovantes de Pix e transferência e holerites, em PDF ou foto. O app lê sozinho, sem custo, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
+  
   <label class="drop" id="drop" for="upl"><b>Solte os arquivos aqui</b><span class="sub">ou toque para escolher fotos e PDFs. Pode enviar vários de uma vez.</span><span class="btn pri">Escolher arquivos</span><input type="file" id="upl" multiple accept="image/*,application/pdf"></label>
   ${S.fila.length ? `<div class="fila">${S.fila.map(cardLeitor).join("")}</div>` : `<div class="panel empty"><b>Nenhum documento na fila</b>Cada arquivo enviado aparece aqui com a sugestão de lançamento: funcionária, categoria, valor, data e mês de referência.</div>`}
   ${nP ? `<p class="sub">${nP} ${nP>1?"documentos aguardam":"documento aguarda"} sua confirmação.</p>` : ""}
-  <p class="sub">Cada leitura custa poucos centavos na API do Claude. Os arquivos confirmados ficam anexados ao lançamento.</p>`;
+  <p class="sub">A leitura é feita no próprio aparelho, sem custo. Fotos: de frente, nítidas e com boa luz. Os arquivos confirmados ficam anexados ao lançamento.</p>`;
 }
 document.addEventListener("click", e => {
   const ok = e.target.closest("[data-ok]"); if(ok){ confirmaLeitor(ok.dataset.ok, ok); return; }
