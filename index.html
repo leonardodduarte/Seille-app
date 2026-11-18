@@ -23,7 +23,7 @@ input,select,textarea{font-size:16px!important}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=7"></script>
+<script src="shim.js?v=8"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -390,7 +390,7 @@ const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer
 const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
 const POR_PECA = "Produção por peça";
 const FORMAS = ["Pix","Transferência","Dinheiro","Boleto / guia"];
-const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos","metas"];
+const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos","metas","entrada"];
 const TIPOS_IMP = ["DAS – Simples Nacional","DAS-MEI","IRPJ","CSLL","PIS","COFINS","IRRF (retido na fonte)","INSS / DCTFWeb","ICMS / DIFAL","ISS","Parcelamento de impostos","IRPJ / CSLL","PIS / COFINS","Outro imposto"];
 const CAT_COL = ["Fotógrafo","Vídeo maker","Modelos","Maquiagem e cabelo","Locação do espaço","Styling e produção de moda","Cenografia e objetos","Transporte","Alimentação","Edição e tratamento de imagens","Peças piloto do lançamento","Divulgação do lançamento","Outros"];
 const STATUS_COL = ["Planejamento","Em produção","Lançada","Encerrada"];
@@ -398,7 +398,7 @@ const STATUS_COL_CLS = {"Planejamento":"", "Em produção":"acc", "Lançada":"go
 let COLSEL = "";
 const NLOAD = COLS.length + 1;
 
-const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], impostos:[], metas:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
+const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], variaveis:[], trafego:[], funcionarias:[], pagamentos:[], impostos:[], metas:[], entrada:[], config:{...CFG_DEF}, loaded:new Set(), db:null, assets:null, readonly:false};
 let PAGF = "";
 let MES = today().slice(0,7);
 let ANO = false; // true = "Ano todo" (Painel e Pedidos mostram o ano inteiro)
@@ -800,7 +800,8 @@ function saudacao(){
   const emProd = new Set(S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status)).map(v => v.pedido || v.id)).size;
   const ano = MES.slice(0,4);
   const fin = new Set(S.vendas.filter(v => ["Enviado","Entregue"].includes(v.status) && (v.data||"").startsWith(ano)).map(v => v.pedido || v.id)).size;
-  return `<div class="hero"><h1>Olá, ${esc(e)}!</h1><p>${emProd} ${emProd===1?"pedido":"pedidos"} em produção · ${fin} ${fin===1?"finalizado":"finalizados"} em ${ano}</p></div>`;
+  const docs = S.entrada.filter(x => x.status === "novo").length;
+  return `<div class="hero"><h1>Olá, ${esc(e)}!</h1><p>${emProd} ${emProd===1?"pedido":"pedidos"} em produção · ${fin} ${fin===1?"finalizado":"finalizados"} em ${ano}</p>${docs ? `<p><button class="btn" data-ir="leitor">${docs} ${docs===1?"documento chegou":"documentos chegaram"} por e-mail para conferir ›</button></p>` : ""}</div>`;
 }
 // Pedidos que vieram da loja sem peça cadastrada: ao cadastrar a peça com o mesmo nome, liga e preenche o custo
 async function ligaVendas(id, p){
@@ -1815,7 +1816,7 @@ function avisos(it){
 }
 function cardLeitor(it){
   const prev = `<div class="prev">${it.thumb ? `<img src="${it.thumb}" alt="">` : "PDF"}</div>`;
-  const head = (pill) => `<div class="ftop"><span class="fn">${esc(it.file.name)}</span>${pill}</div>`;
+  const head = (pill) => `<div class="ftop"><span class="fn">${esc(it.file.name)}</span>${pill}</div>${it.origem ? `<div class="sub">Recebido por e-mail · ${esc(it.origem)}</div>` : ""}`;
   if(it.status === "aguardando" || it.status === "lendo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill acc">${it.status==="lendo"?"lendo":"na fila"}</span>`)}<div class="ia"><span class="spin"></span>${it.status==="lendo" ? esc(it.etapa || "Lendo o documento…") : "Aguardando a leitura dos arquivos anteriores."}</div></div></div>`;
   if(it.status === "erro") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill bad">não lido</span>`)}<div class="err">${esc(it.err)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Remover</button><button class="btn pri" data-retry="${it.id}">Tentar de novo</button></div></div></div>`;
   if(it.status === "salvo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill good">lançado</span>`)}<div class="ia">${esc(it.msg)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Tirar da lista</button></div></div></div>`;
@@ -1856,7 +1857,8 @@ async function confirmaLeitor(id, btn){
   if(g.destino === "colecao" && !g.colecaoId) return fail("Escolha a coleção.");
   btn.disabled = true; btn.textContent = "Salvando…";
   let anexos = [];
-  if(S.assets){ try{ const r = await S.assets.upload(it.file); anexos = [{id:r.id, nome:it.file.name, tipo:r.contentType}]; } catch(e){ return fail("Não foi possível guardar o arquivo. Use JPG, PNG ou PDF de até 20 MB."); } }
+  if(it.arquivoId) anexos = [{id: it.arquivoId, nome: it.file.name, tipo: "application/pdf"}];
+  else if(S.assets){ try{ const r = await S.assets.upload(it.file); anexos = [{id:r.id, nome:it.file.name, tipo:r.contentType}]; } catch(e){ return fail("Não foi possível guardar o arquivo. Use JPG, PNG ou PDF de até 20 MB."); } }
   const comp = g.competencia || g.data.slice(0,7), base = {criadoEm:new Date().toISOString(), lidoPorIA:true};
   try{
     if(g.destino === "funcionaria"){
@@ -1885,12 +1887,40 @@ async function confirmaLeitor(id, btn){
       it.msg = `${brl(g.valor)} de ${g.tipoImposto} lançado em Impostos (referência ${ymShort(comp)}).`;
     }
     if(!S.assets) it.msg += " O arquivo não foi guardado.";
-    it.status = "salvo"; render();
+    it.status = "salvo"; marcaEntrada(it, "lancado"); render();
   }catch(e){ fail(e?.code === "invalid_argument" ? "Você tem acesso só de leitura." : "Não foi possível lançar agora. Tente de novo."); }
+}
+// ---------- documentos recebidos por e-mail (caixa de entrada) ----------
+let puxandoEntrada = false;
+async function marcaEntrada(it, status){
+  if(!it.entradaId || !S.db) return;
+  const e = S.entrada.find(x => x.id === it.entradaId); if(!e) return;
+  const body = {...e, status, tratadoEm: new Date().toISOString()}; delete body.id;
+  try{ await S.db.collection("entrada").doc(e.id).set(body); }catch(_){}
+}
+async function puxarEntrada(){
+  if(puxandoEntrada || !S.assets?.baixar) return;
+  const novos = S.entrada.filter(e => e.status === "novo" && !S.fila.some(it => it.entradaId === e.id))
+    .sort((a,b) => String(a.recebidoEm||"").localeCompare(String(b.recebidoEm||""))).slice(0, 10);
+  if(!novos.length) return;
+  puxandoEntrada = true;
+  try{
+    for(const e of novos){
+      try{
+        const blob = await S.assets.baixar(e.arquivo);
+        const file = new File([blob], e.nome || "documento.pdf", {type: "application/pdf"});
+        S.fila.push({id: "q" + (++FID), file, status: "aguardando", thumb: null, entradaId: e.id, arquivoId: e.arquivo, origem: [e.de, e.assunto].filter(Boolean).join(" · ")});
+      }catch(err){ console.error("e-mail", err); }
+    }
+  } finally { puxandoEntrada = false; }
+  render(); processaFila();
 }
 function vLeitor(){
   const nP = S.fila.filter(x=>x.status==="pronto").length;
-  return `<div class="head"><div><h2>Adicionar documentos</h2><p>Envie DARF, DAS, boletos (aluguel, condomínio, contas), comprovantes de Pix e transferência e holerites, em PDF ou foto. O app lê sozinho, sem custo, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
+  const novosEmail = S.entrada.filter(e => e.status === "novo").length;
+  if(novosEmail && curView() === "leitor") setTimeout(puxarEntrada, 0);
+  return `${novosEmail ? `<div class="banner info"><b>${novosEmail} ${novosEmail === 1 ? "documento recebido" : "documentos recebidos"} por e-mail</b> esperando conferência. ${novosEmail > 10 ? "Eles entram na lista de 10 em 10." : "Eles já aparecem na lista abaixo."}</div>` : ""}
+  <div class="head"><div><h2>Adicionar documentos</h2><p>Envie DARF, DAS, boletos (aluguel, condomínio, contas), comprovantes de Pix e transferência e holerites, em PDF ou foto. O app lê sozinho, sem custo, e sugere onde lançar. Nada é lançado antes de você conferir e confirmar.</p></div></div>
   
   <label class="drop" id="drop" for="upl"><b>Solte os arquivos aqui</b><span class="sub">ou toque para escolher fotos e PDFs. Pode enviar vários de uma vez.</span><span class="btn pri">Escolher arquivos</span><input type="file" id="upl" multiple accept="image/*,application/pdf"></label>
   ${S.fila.length ? `<div class="fila">${S.fila.map(cardLeitor).join("")}</div>` : `<div class="panel empty"><b>Nenhum documento na fila</b>Cada arquivo enviado aparece aqui com a sugestão de lançamento: funcionária, categoria, valor, data e mês de referência.</div>`}
@@ -1899,7 +1929,7 @@ function vLeitor(){
 }
 document.addEventListener("click", e => {
   const ok = e.target.closest("[data-ok]"); if(ok){ confirmaLeitor(ok.dataset.ok, ok); return; }
-  const rm = e.target.closest("[data-rm]"); if(rm){ const i = S.fila.findIndex(x=>x.id===rm.dataset.rm); if(i>=0){ const it = S.fila[i]; if(it.thumb) URL.revokeObjectURL(it.thumb); S.fila.splice(i,1); render(); } return; }
+  const rm = e.target.closest("[data-rm]"); if(rm){ const i = S.fila.findIndex(x=>x.id===rm.dataset.rm); if(i>=0){ const it = S.fila[i]; if(it.status !== "salvo") marcaEntrada(it, "descartado"); if(it.thumb) URL.revokeObjectURL(it.thumb); S.fila.splice(i,1); render(); } return; }
   const rt = e.target.closest("[data-retry]"); if(rt){ const it = S.fila.find(x=>x.id===rt.dataset.retry); if(it){ it.status = "aguardando"; render(); processaFila(); } }
 });
 document.addEventListener("change", e => {
@@ -1990,7 +2020,7 @@ async function semearGestao(){
       marcas[c.marca] = true; feitos.push(c.aviso);
     }
     if(feitos.length){ await S.db.doc("config/geral").set({...S.config, ...marcas}); toast("Custo fixo cadastrado: " + feitos.join(" e ")); }
-  }catch(e){ semeado = false; }
+  }catch(e){ console.error("cadastro inicial", e); } // tenta de novo só na próxima abertura do app
 }
 function render(){
   const v = curView();

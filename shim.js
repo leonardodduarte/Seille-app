@@ -71,6 +71,7 @@
       return { id: path, url: null, sizeBytes: file.size, contentType: file.type };
     },
     async delete(id) { await sb.storage.from("comprovantes").remove([id]); },
+    async baixar(id) { const { data, error } = await sb.storage.from("comprovantes").download(id); if (error) throw erro(error); return data; },
   };
   // Abre um comprovante guardado (links com data-blob)
   document.addEventListener("click", async e => {
