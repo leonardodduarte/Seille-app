@@ -138,6 +138,9 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.irseta{color:var(--muted);font-weight:400}
+.dre tr.click:hover td,.qi.click:hover{background:var(--raised)}
+.qi.click{cursor:pointer;border-radius:10px;padding-left:6px;padding-right:6px;margin:0 -6px}
 .ptr{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:40;transform:translate(-50%,-70px);display:flex;align-items:center;gap:8px;background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 14px 8px 10px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.2);pointer-events:none;opacity:0}
 .ptr svg{width:18px;height:18px;transition:transform .15s}
 .ptr.pronto svg{transform:rotate(180deg)}
@@ -865,7 +868,7 @@ function painelEstados(){
       <div class="ufb"><div class="ufl"><b>${esc(uf ? uf + " · " + (UF_NOME[uf]||uf) : "Estado não informado")}</b><span>${brl(o.receita)} <span class="sub">· ${pct(tot ? o.receita/tot : 0, 0)}</span></span></div>
         <div class="meter"><i style="width:${max ? o.receita/max*100 : 0}%"></i></div>
         <div class="sub">${o.n} ${o.n===1?"pedido":"pedidos"} · ticket médio ${brl(o.receita/o.n)} · ${cid.length} ${cid.length===1?"cidade":"cidades"}</div>
-        ${aberto ? `<div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
+        ${aberto ? `<div><button class="btn" data-pedidosuf="${esc(uf)}" style="margin-top:6px">Ver pedidos ${uf ? "de " + esc(uf) : "sem estado"} ›</button></div><div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
       </div></div>`; }).join("");
   return `<div class="panel" style="display:flex;flex-direction:column;gap:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos${periodo() ? " · " + rotuloRecorte() : A ? " em " + ano : ""}</h3>${A ? "" : `<div class="seg">${seg}</div>`}</div>
@@ -912,7 +915,7 @@ function openTodasPecas(){
     <input type="search" id="pecq" placeholder="Buscar peça" value="${esc(PECQ)}" style="border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px">
     <div class="tw"><table>
       <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n hide-m">% das peças</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead>
-      <tbody id="pectb">${r.map((t,i) => `<tr data-busca="${esc(semAc(t.nome))}"><td><span class="sub">${i+1}.</span> ${esc(t.nome)}${Object.keys(t.tam).length ? `<div class="sub">${tams(t)}</div>` : ""}</td><td class="n"><b>${t.n}</b></td><td class="n hide-m">${pct(totN ? t.n/totN : 0)}</td><td class="n">${brl(t.receita)}</td><td class="n">${brl(t.lucro)}</td></tr>`).join("") || emptyRow(5, "Sem vendas no período", "")}</tbody>
+      <tbody id="pectb">${r.map((t,i) => `<tr data-busca="${esc(semAc(t.nome))}"><td><span class="sub">${i+1}.</span> <span class="lnk" data-peca="${esc(t.nome)}" role="button">${esc(t.nome)}</span>${Object.keys(t.tam).length ? `<div class="sub">${tams(t)}</div>` : ""}</td><td class="n"><b>${t.n}</b></td><td class="n hide-m">${pct(totN ? t.n/totN : 0)}</td><td class="n">${brl(t.receita)}</td><td class="n">${brl(t.lucro)}</td></tr>`).join("") || emptyRow(5, "Sem vendas no período", "")}</tbody>
       ${r.length ? `<tfoot><tr><td>Total</td><td class="n">${intf(totN)}</td><td class="n hide-m">100%</td><td class="n">${brl(totR)}</td><td class="n">${brl(totL)}</td></tr></tfoot>` : ""}
     </table></div>
     <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
@@ -937,6 +940,19 @@ async function marcarAntigos(btn){
   }catch(err){ toast(`Parou em ${n} de ${lista.length}. Toque de novo para continuar.`); }
   render();
 }
+// Navegação a partir do Painel: leva para onde a informação está cadastrada
+function irPara(destino){
+  closeModal();
+  if(destino === "taxfrete"){ location.hash = "#custos"; setTimeout(openTaxasFretes, 60); return; }
+  if(destino === "pedidos" || destino === "pedidos-andamento"){ PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; PEDF = destino === "pedidos-andamento" ? "and" : "todos"; if(destino === "pedidos-andamento"){ ANO = false; PER = {de: addDays(today(), -DIAS_FILA), ate: today()}; } location.hash = "#pedidos"; return; }
+  location.hash = "#" + destino;
+}
+function abrirPeca(nome){
+  closeModal();
+  const k = semAc(nome), p = S.produtos.find(x => semAc(x.nome) === k);
+  if(p){ location.hash = "#pecas"; setTimeout(() => openForm("produtos", p), 60); return; }
+  PEDQ = nome; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos";
+}
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
@@ -952,37 +968,37 @@ function vPainel(){
   const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
   const ch = chartLucro();
   const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
-  const dreRow = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
+  const dreRow = (l, v, cls="", ir="") => `<tr class="${cls}${ir?" click":""}"${ir?` data-ir="${ir}"`:""}><td>${l}${ir?` <span class="irseta" aria-hidden="true">›</span>`:""}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
   return `
   ${hasEx ? `<div class="banner info">Os registros marcados como <b>exemplo</b> mostram como o app funciona. Quando for lançar os dados reais, apague todos em Ajustes.</div>` : ""}
   <div class="seclbl">Resultado de ${per}<span>${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span></div>
   <div class="kpis">
-    <div class="kpi"><span class="l">Faturamento</span><span class="v num">${brl(c.receita)}</span>
+    <div class="kpi kclick" data-ir="pedidos"><span class="l">Faturamento ›</span><span class="v num">${brl(c.receita)}</span>
       <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta)+(metaPl?" (planilha)":"") : ""}</span>
       <span class="s cmp">${cmp.temAnt ? vsAnt(ca.receita, cp.receita) : `Sem vendas no app de ${cmp.rot} para comparar`}</span>
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
-    <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
-    <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
-    <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${sess ? `<span class="s">conversão ${pct(c.nPed/sess, 2)} · ${intf(sess)} sessões</span>` : ""}${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
-    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
-    <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
+    <div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
+    <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
+    <div class="kpi kclick" data-ir="pedidos"><span class="l">Pedidos ›</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${sess ? `<span class="s">conversão ${pct(c.nPed/sess, 2)} · ${intf(sess)} sessões</span>` : ""}${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
+    <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
   ${painelEstados()}
   <div class="grid2">
     <div class="panel"><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3>
       <table class="dre"><tbody>
-        ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big")}
-        ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus")}
-        ${dreRow(`Taxas e juros do pagamento${c.gwEstimado && c.vs.length ? ` (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde falta o valor real)` : ""}`, -c.gateway, "minus")}
-        ${dreRow(c.impostoMisto ? `Impostos (valor pago nos meses lançados em <a href="#impostos">Impostos</a>, estimativa nos outros)` : c.impostoReal ? `Impostos pagos (lançados em <a href="#impostos">Impostos</a>)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em <a href="#impostos">Impostos</a>)`, -c.imposto, "minus")}
-        ${dreRow("Frete pago", -c.frete, "minus")}
+        ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big", "pedidos")}
+        ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus", "pecas")}
+        ${dreRow(`Taxas e juros do pagamento${c.gwEstimado && c.vs.length ? ` (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde falta o valor real)` : ""}`, -c.gateway, "minus", "taxfrete")}
+        ${dreRow(c.impostoMisto ? `Impostos (valor pago nos meses lançados em Impostos, estimativa nos outros)` : c.impostoReal ? `Impostos pagos (lançados em Impostos)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em Impostos)`, -c.imposto, "minus", "impostos")}
+        ${dreRow("Frete pago", -c.frete, "minus", "taxfrete")}
         ${dreRow("Margem de contribuição", c.mc, "tot")}
-        ${dreRow("Tráfego pago (anúncios)", -c.ads, "minus")}
-        ${c.gestao ? dreRow("Gestão de tráfego (agência)", -c.gestao, "minus") : ""}
-        ${dreRow("Custos variáveis do mês (pilotos, fotos…)", -c.avulsos, "minus")}
-        ${dreRow("Funcionárias (salários, encargos, extras)", -c.equipe, "minus")}
-        ${dreRow("Lançamento de coleções (fotos, modelos…)", -c.colecao, "minus")}
-        ${dreRow("Custos fixos (aluguel, contas, contador…)", -(c.fixos - (c.gestao||0)), "minus")}
+        ${dreRow("Tráfego pago (anúncios)", -c.ads, "minus", "trafego")}
+        ${c.gestao ? dreRow("Gestão de tráfego (agência)", -c.gestao, "minus", "trafego") : ""}
+        ${dreRow("Custos variáveis do mês (pilotos, fotos…)", -c.avulsos, "minus", "custos")}
+        ${dreRow("Funcionárias (salários, encargos, extras)", -c.equipe, "minus", "funcionarias")}
+        ${dreRow("Lançamento de coleções (fotos, modelos…)", -c.colecao, "minus", "colecoes")}
+        ${dreRow("Custos fixos (aluguel, contas, contador…)", -(c.fixos - (c.gestao||0)), "minus", "custos")}
         ${dreRow("Lucro líquido", c.lucro, "tot big")}
       </tbody></table>
     </div>
@@ -993,15 +1009,15 @@ function vPainel(){
   </div>
   <div class="grid2">
     <div class="panel"><h3>Fila de produção</h3>
-      ${fila.length ? `<div class="qlist">${fila.slice(0,8).map(v=>`<div class="qi"><div class="grow"><div><b>${esc(v.produtoNome)}</b> ${v.tamanho?`<span class="sub">· ${esc(v.tamanho)}</span>`:""} ${num(v.qtd)>1?`<span class="sub">× ${num(v.qtd)}</span>`:""}${exBadge(v)}</div><div class="sub">${esc(v.cliente||"")} ${v.pedido?"· #"+esc(v.pedido):""} · prazo ${dBR(v.prazo)}</div></div>
+      ${fila.length ? `<div class="qlist">${fila.slice(0,8).map(v=>`<div class="qi click" data-ped="${esc(chavePed(v))}"><div class="grow"><div><b>${esc(v.produtoNome)}</b> ${v.tamanho?`<span class="sub">· ${esc(v.tamanho)}</span>`:""} ${num(v.qtd)>1?`<span class="sub">× ${num(v.qtd)}</span>`:""}${exBadge(v)}</div><div class="sub">${esc(v.cliente||"")} ${v.pedido?"· #"+esc(v.pedido):""} · prazo ${dBR(v.prazo)}</div></div>
         ${statusPill(v.status)}<span class="pill ${v.faltam<0?"bad":v.faltam<=2?"warn":""}">${v.faltam<0?Math.abs(v.faltam)+"d atrasado":v.faltam===0?"vence hoje":v.faltam+"d"}</span></div>`).join("")}</div>
-        ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} pedidos na fila. Veja todos em Pedidos.</p>`:""}`
+        ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} peças na fila. <button class="lnk" data-ir="pedidos-andamento">Ver todos os pedidos em andamento ›</button></p>`:""}`
       : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos dos últimos ${DIAS_FILA} dias com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
       ${antigos.length ? `<div class="note" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"><span><b>${antigos.length} ${antigos.length===1?"peça":"peças"}</b> de pedidos com mais de ${DIAS_FILA} dias ainda ${antigos.length===1?"está":"estão"} como Recebido, Em produção ou Pronto. Provavelmente já foram entregues e não foram marcadas como enviadas na Nuvemshop. Elas não aparecem na fila.</span><div><button class="btn" data-marcaant>Marcar ${antigos.length===1?"como entregue":"todas como entregues"}</button></div></div>` : ""}
     </div>
     <div class="panel"><h3>Peças que mais venderam ${P ? "de " + per : A ? "em " + ano : "no mês"}</h3>
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
-      ${topArr.length ? topArr.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
+      ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
       ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}
     </div>
@@ -1839,6 +1855,9 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
+  const pc = e.target.closest("[data-peca]"); if(pc){ abrirPeca(pc.dataset.peca); return; }
+  const pu = e.target.closest("[data-pedidosuf]"); if(pu){ if(REGP === "ano" && !periodo()) ANO = true; PEDUF = pu.dataset.pedidosuf; PEDQ = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-gestao]")){ openForm("fixos", null, {nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: MES}); return; }
   const ma = e.target.closest("[data-marcaant]"); if(ma && !ma.disabled){ marcarAntigos(ma); return; }
   const rp = e.target.closest("[data-regp]"); if(rp){ REGP = rp.dataset.regp; REGUF = ""; render(); return; }
