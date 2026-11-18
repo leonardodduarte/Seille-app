@@ -1974,15 +1974,22 @@ function vColecoes(){
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }
 const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, ajustes:vAjustes};
-// Cadastro inicial (uma vez só): custo fixo da agência de gestão de tráfego, R$ 2.070/mês desde jan/2026.
-// Usa um código fixo para nunca duplicar, e uma marcação no config para não recriar se for apagado depois.
+// Cadastros iniciais (uma vez só) de custos fixos combinados com a Seille.
+// Código fixo para nunca duplicar, e marcação no config para não recriar se for apagado depois.
+const CADASTROS_INICIAIS = [
+  {id: "gestao-trafego", marca: "gestaoSemeada", dados: {nome: "Gestão de tráfego (agência)", categoria: "Gestão de tráfego", valor: 2070, inicio: "2026-01"}, aviso: "Gestão de tráfego (R$ 2.070/mês desde jan/2026)"},
+  {id: "contador", marca: "contadorSemeado", dados: {nome: "Contador", categoria: "Contador", valor: 650, inicio: "2026-01"}, aviso: "Contador (R$ 650/mês desde jan/2026)"},
+];
 let semeado = false;
 async function semearGestao(){
   try{
-    if(S.config.gestaoSemeada || S.fixos.some(f => f.categoria === CAT_GESTAO)) return;
-    await S.db.collection("fixos").doc("gestao-trafego").set({nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: "2026-01", fim: "", criadoEm: new Date().toISOString()});
-    await S.db.doc("config/geral").set({...S.config, gestaoSemeada: true});
-    toast("Custo da gestão de tráfego (R$ 2.070/mês desde jan/2026) cadastrado");
+    const feitos = [], marcas = {};
+    for(const c of CADASTROS_INICIAIS){
+      if(S.config[c.marca] || S.fixos.some(f => f.categoria === c.dados.categoria)) continue;
+      await S.db.collection("fixos").doc(c.id).set({...c.dados, fim: "", criadoEm: new Date().toISOString()});
+      marcas[c.marca] = true; feitos.push(c.aviso);
+    }
+    if(feitos.length){ await S.db.doc("config/geral").set({...S.config, ...marcas}); toast("Custo fixo cadastrado: " + feitos.join(" e ")); }
   }catch(e){ semeado = false; }
 }
 function render(){
