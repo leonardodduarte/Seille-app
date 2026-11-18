@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Seille Gestão</title>
 <meta name="theme-color" content="#FFFFFF">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,6 +17,9 @@
 body{margin:0;background:#fff;color:#000;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
 img{max-width:100%}
 [hidden]{display:none!important}
+html,body,*{touch-action:manipulation;}
+html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+input,select,textarea{font-size:16px!important}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -289,7 +292,6 @@ select.flt{border:1px solid var(--line);background:var(--surface);border-radius:
         <a href="#leitor">Adicionar documentos</a>
         <a href="#ajustes">Ajustes</a>
       </nav>
-      <button class="novo" id="novoTop" data-new="vendas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Novo pedido</button>
     </div>
     <div class="month" hidden><button id="mprev"></button><input type="month" id="mes"><button id="mnext"></button></div>
   </div>
@@ -316,6 +318,9 @@ select.flt{border:1px solid var(--line);background:var(--surface);border-radius:
 </div></div>
 
 <script>
+// Sem zoom: bloqueia o gesto de pinça e o toque duplo (Safari no iPhone e no iPad)
+["gesturestart","gesturechange","gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), {passive:false}));
+document.addEventListener("touchmove", e => { if(e.touches.length > 1) e.preventDefault(); }, {passive:false});
 (() => {
 // ---------- helpers ----------
 const $ = (s, el=document) => el.querySelector(s);
@@ -952,7 +957,7 @@ function vPedidos(){
     <span class="chev">›</span></div>`; }).join("")}</div>
     ${gs.length > PEDLIM ? `<button class="btn" data-pedmais style="align-self:center">Mostrar mais pedidos (${gs.length - PEDLIM} restantes)</button>` : ""}
     <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)} · sobra ${brl(tl)}</span></span></div>`
-    : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Toque em Novo pedido para lançar uma venda."}</div>`}
+    : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Os pedidos pagos da loja Nuvemshop aparecem aqui automaticamente."}</div>`}
   ${nPed ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
     <div class="kpi"><span class="l">Ticket médio</span><span class="v num">${brl(tr/nPed)}</span><span class="s">${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
     <div class="kpi"><span class="l">Com cupom</span><span class="v num">${pct(comCupom/nPed,0)}</span><span class="s">${comCupom} de ${nPed} pedidos</span></div>
@@ -1638,8 +1643,6 @@ function render(){
   document.querySelectorAll("#bnav a, #sheet a").forEach(a => { if(a.hash === "#"+v) a.setAttribute("aria-current","page"); });
   $("#mais").toggleAttribute("aria-current", ["pecas","funcionarias","colecoes","trafego","impostos","ajustes"].includes(v));
   $("#sheet").hidden = true;
-  $("#novoTop").disabled = S.loaded.size >= NLOAD && !S.produtos.length;
-  $("#novoTop").title = $("#novoTop").disabled ? "Cadastre uma peça primeiro (Mais → Peças)" : "";
   $("#mes").value = MES;
   if(S.loaded.size < NLOAD && !S.failed){ return; }
   // keep config form edits from being wiped while typing
