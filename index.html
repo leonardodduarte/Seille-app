@@ -138,6 +138,11 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.subtabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;border:1px solid var(--line);border-radius:16px;padding:5px;align-self:flex-start;max-width:100%}
+.subtabs::-webkit-scrollbar{display:none}
+.subtabs a{flex:none;padding:9px 14px;border-radius:11px;color:var(--muted);text-decoration:none;font-weight:600;font-size:15px;white-space:nowrap}
+.subtabs a[aria-current="page"]{background:var(--ink);color:var(--bg)}
+@media (max-width:600px){.subtabs{align-self:stretch}}
 .irseta{color:var(--muted);font-weight:400}
 .dre tr.click:hover td,.qi.click:hover{background:var(--raised)}
 .qi.click{cursor:pointer;border-radius:10px;padding-left:6px;padding-right:6px;margin:0 -6px}
@@ -314,11 +319,7 @@ button.prev{border:1px solid var(--line);padding:0;cursor:zoom-in;position:relat
         <a href="#pedidos">Pedidos</a>
         <a href="#custos">Custos</a>
         <a href="#pecas">Peças</a>
-        <a href="#funcionarias">Funcionárias</a>
-        <a href="#colecoes">Coleções</a>
-        <a href="#trafego">Tráfego pago</a>
-        <a href="#impostos">Impostos</a>
-        <a href="#leitor">Adicionar documentos</a>
+        <a href="#leitor">Documentos</a>
         <a href="#ajustes">Ajustes</a>
       </nav>
     </div>
@@ -339,10 +340,6 @@ button.prev{border:1px solid var(--line);padding:0;cursor:zoom-in;position:relat
 </nav>
 <div class="sheet" id="sheet" hidden><div class="in"><div class="grab"></div>
   <a href="#pecas">Peças e ficha técnica</a>
-  <a href="#funcionarias">Funcionárias</a>
-  <a href="#colecoes">Coleções</a>
-  <a href="#trafego">Tráfego pago</a>
-  <a href="#impostos">Impostos</a>
   <a href="#ajustes">Ajustes</a>
 </div></div>
 
@@ -2088,13 +2085,16 @@ async function semearGestao(){
     if(feitos.length){ await S.db.doc("config/geral").set({...S.config, ...marcas}); toast("Custo fixo cadastrado: " + feitos.join(" e ")); }
   }catch(e){ console.error("cadastro inicial", e); } // tenta de novo só na próxima abertura do app
 }
+const GRUPO_CUSTOS = [["custos","Visão geral"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["colecoes","Coleções"]];
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
-  document.querySelectorAll("#tabs a").forEach(a => { if(a.hash === "#"+v) a.setAttribute("aria-current","page"); });
+  const aba = GRUPO_CUSTOS.some(([k]) => k === v) ? "custos" : v; // Funcionárias, Coleções, Tráfego e Impostos ficam dentro de Custos
+  document.querySelectorAll("#tabs a").forEach(a => { if(a.hash === "#"+aba) a.setAttribute("aria-current","page"); });
   document.querySelectorAll("#bnav a, #sheet a").forEach(a => a.removeAttribute("aria-current"));
   document.querySelectorAll("#bnav a, #sheet a").forEach(a => { if(a.hash === "#"+v) a.setAttribute("aria-current","page"); });
-  $("#mais").toggleAttribute("aria-current", ["pecas","funcionarias","colecoes","trafego","impostos","ajustes"].includes(v));
+  document.querySelectorAll("#bnav a").forEach(a => { if(a.hash === "#"+aba) a.setAttribute("aria-current","page"); });
+  $("#mais").toggleAttribute("aria-current", ["pecas","ajustes"].includes(v));
   $("#sheet").hidden = true;
   $("#mes").value = MES;
   if(S.loaded.size < NLOAD && !S.failed){ return; }
@@ -2103,7 +2103,8 @@ function render(){
   if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
   if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
   if(["nsdesde","perde","perate"].includes(document.activeElement?.id)) return;
-  const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
+  const sub = aba === "custos" ? `<nav class="subtabs" aria-label="Custos">${GRUPO_CUSTOS.map(([k,l]) => `<a href="#${k}"${k===v?' aria-current="page"':""}>${l}</a>`).join("")}</nav>` : "";
+  const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + sub + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
   if(v === "painel") bindChart();
 
