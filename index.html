@@ -374,9 +374,10 @@ const GRUPOS = [
   ["Pessoas", ["Funcionárias","Pró-labore"], "fixos"],
   ["Produção", ["Manutenção de máquinas","Peça piloto e modelagem","Tecido / estoque","Embalagens em lote","Material de limpeza e escritório"], "variaveis"],
   ["Administrativo", ["Contador","Plataforma do e-commerce","Softwares e apps","Taxas bancárias","Empréstimos e financiamentos"], "fixos"],
-  ["Marketing", ["Tráfego pago","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
+  ["Marketing", ["Tráfego pago","Gestão de tráfego","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
   ["Outros", ["Outros"], "variaveis"],
 ];
+const CAT_GESTAO = "Gestão de tráfego"; // custo fixo da agência que faz a gestão dos anúncios
 const CAT_AUTO = {"Funcionárias":"funcionarias", "Tráfego pago":"trafego", "Lançamento de coleções":"colecoes"};
 const CATS = GRUPOS.flatMap(g => g[1]).filter(c => !CAT_AUTO[c]);
 const CAT_FIXO = CATS, CAT_VAR = CATS;
@@ -477,6 +478,7 @@ function calcPeriodo(de, ate){
   const ads = S.trafego.filter(t => dentro(t.data)).reduce((a,t)=>a+num(t.investimento),0);
   const avulsos = S.variaveis.filter(x => dentro(x.data)).reduce((a,x)=>a+num(x.valor),0);
   const fixos = meses.reduce((a,ym) => a + S.fixos.filter(f => fixoNoMes(f, ym)).reduce((b,f)=>b+num(f.valor),0) * fracao(ym), 0);
+  const gestao = meses.reduce((a,ym) => a + S.fixos.filter(f => fixoNoMes(f, ym) && f.categoria === CAT_GESTAO).reduce((b,f)=>b+num(f.valor),0) * fracao(ym), 0);
   const pags = S.pagamentos.filter(p => dentro(p.data));
   const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
   const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
@@ -484,13 +486,14 @@ function calcPeriodo(de, ate){
   const lucro = mc - ads - avulsos - fixos - equipe - colecao, nPed = pedidos.size, mcPct = receita ? mc/receita : NaN;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   return {ym: de + "_" + ate, vs, meses, receita, bruto, descontos, cpv, taxas, gateway: gw, gwEstimado: vs.some(v => !temTaxaReal(v)), imposto, impostoEst: receita*num(S.config.imposto)/100, impostoPago, impostoReal, impostoMisto: impostoReal && impostoEstMeses,
-    frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
+    frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
     roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN, equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN, dias: daysBetween(de, ate) + 1};
 }
 function calcAno(ano){
-  const ms = Array.from({length:12}, (_,i) => calcMes(ano + "-" + String(i+1).padStart(2,"0")));
+  // até o mês atual (meses que ainda não chegaram não entram nos custos fixos)
+  const ms = Array.from({length:12}, (_,i) => ano + "-" + String(i+1).padStart(2,"0")).filter(ym => ym <= today().slice(0,7)).map(calcMes);
   const o = {ym: ano, vs: ms.flatMap(m => m.vs), meses: ms};
-  for(const k of ["receita","bruto","descontos","cpv","taxas","gateway","imposto","impostoEst","impostoPago","frete","mc","ads","avulsos","fixos","equipe","porPeca","colecao","lucro","pecas","nPed"]) o[k] = ms.reduce((a,m) => a + (+m[k] || 0), 0);
+  for(const k of ["receita","bruto","descontos","cpv","taxas","gateway","imposto","impostoEst","impostoPago","frete","mc","ads","gestao","avulsos","fixos","equipe","porPeca","colecao","lucro","pecas","nPed"]) o[k] = ms.reduce((a,m) => a + (+m[k] || 0), 0);
   o.gwEstimado = ms.some(m => m.gwEstimado && m.vs.length);
   o.impostoReal = ms.some(m => m.impostoReal); o.impostoMisto = o.impostoReal && ms.some(m => !m.impostoReal && m.vs.length);
   o.mcPct = o.receita ? o.mc/o.receita : NaN; o.margem = o.receita ? o.lucro/o.receita : NaN; o.ticket = o.nPed ? o.receita/o.nPed : 0;
@@ -513,6 +516,7 @@ function calcMes(ym){
   const ads = S.trafego.filter(t => (t.data||"").slice(0,7) === ym).reduce((a,t)=>a+num(t.investimento),0);
   const avulsos = S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
   const fixos = S.fixos.filter(f => fixoNoMes(f, ym)).reduce((a,f)=>a+num(f.valor),0);
+  const gestao = S.fixos.filter(f => fixoNoMes(f, ym) && f.categoria === CAT_GESTAO).reduce((a,f)=>a+num(f.valor),0);
   const pags = S.pagamentos.filter(p => pagYm(p) === ym);
   const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
   const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
@@ -521,7 +525,7 @@ function calcMes(ym){
   const nPed = pedidos.size;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   const mcPct = receita ? mc/receita : NaN;
-  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
+  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
     nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN,
     equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
 }
@@ -960,7 +964,7 @@ function vPainel(){
     <div class="kpi"><span class="l">Lucro líquido</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
     <div class="kpi"><span class="l">Margem de contribuição</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
     <div class="kpi"><span class="l">Pedidos</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${sess ? `<span class="s">conversão ${pct(c.nPed/sess, 2)} · ${intf(sess)} sessões</span>` : ""}${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
-    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads)}</span><span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    <div class="kpi"><span class="l">Tráfego pago</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi"><span class="l">Ponto de equilíbrio</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
   </div>
   ${painelEstados()}
@@ -973,11 +977,12 @@ function vPainel(){
         ${dreRow(c.impostoMisto ? `Impostos (valor pago nos meses lançados em <a href="#impostos">Impostos</a>, estimativa nos outros)` : c.impostoReal ? `Impostos pagos (lançados em <a href="#impostos">Impostos</a>)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em <a href="#impostos">Impostos</a>)`, -c.imposto, "minus")}
         ${dreRow("Frete pago", -c.frete, "minus")}
         ${dreRow("Margem de contribuição", c.mc, "tot")}
-        ${dreRow("Tráfego pago", -c.ads, "minus")}
+        ${dreRow("Tráfego pago (anúncios)", -c.ads, "minus")}
+        ${c.gestao ? dreRow("Gestão de tráfego (agência)", -c.gestao, "minus") : ""}
         ${dreRow("Custos variáveis do mês (pilotos, fotos…)", -c.avulsos, "minus")}
         ${dreRow("Funcionárias (salários, encargos, extras)", -c.equipe, "minus")}
         ${dreRow("Lançamento de coleções (fotos, modelos…)", -c.colecao, "minus")}
-        ${dreRow("Custos fixos (aluguel, contas, contador…)", -c.fixos, "minus")}
+        ${dreRow("Custos fixos (aluguel, contas, contador…)", -(c.fixos - (c.gestao||0)), "minus")}
         ${dreRow("Lucro líquido", c.lucro, "tot big")}
       </tbody></table>
     </div>
@@ -1199,7 +1204,7 @@ function vCustos(){
     const gt = list.reduce((a,k)=>a+(m[k]||0),0);
     return `<tr class="grp"><td>${esc(g)}</td><td class="n">${gt?brl(gt):""}</td><td class="n"></td><td></td></tr>` + list.map(k => {
       const v = m[k] || 0;
-      const act = CAT_AUTO[k] ? `<a class="lnk" href="#${CAT_AUTO[k]}">Abrir ${esc(k)}</a>` : `<button class="lnk" data-new="${col}" data-cat="${esc(k)}">Lançar</button>`;
+      const act = CAT_AUTO[k] ? `<a class="lnk" href="#${CAT_AUTO[k]}">Abrir ${esc(k)}</a>` : `<button class="lnk" data-new="${k===CAT_GESTAO?"fixos":col}" data-cat="${esc(k)}">Lançar</button>`;
       return `<tr><td>${esc(k)}</td><td class="n">${v ? brl(v) : `<span class="sub">não lançado</span>`}</td><td class="n sub">${v && c.receita ? pct(v/c.receita) : ""}</td><td class="n">${act}</td></tr>`;
     }).join("");
   }).join("");
@@ -1338,21 +1343,28 @@ function vTrafego(){
   const tot = linhasRes.reduce((a,l) => ({fb:a.fb+l.fb, gg:a.gg+l.gg, out:a.out+l.out, tot:a.tot+l.tot, fat:a.fat+l.fat}), {fb:0,gg:0,out:0,tot:0,fat:0});
   const maxTot = Math.max(0, ...linhasRes.map(l => l.tot));
   const comInv = linhasRes.filter(l => l.tot > 0).length;
+  const gestaoFixos = S.fixos.filter(f => f.categoria === CAT_GESTAO);
+  const gestaoMes = ym => ym > today().slice(0,7) ? 0 : S.fixos.filter(f => fixoNoMes(f, ym) && f.categoria === CAT_GESTAO).reduce((a,f)=>a+num(f.valor),0);
+  if(A) linhasRes.forEach((l,i) => { l.gest = gestaoMes(ano + "-" + String(i+1).padStart(2,"0")); });
+  const totGest = c.gestao || 0, custoTotal = c.ads + totGest;
   const roasTxt = (fat, inv) => inv ? (fat/inv).toLocaleString("pt-BR",{maximumFractionDigits:1}) + "×" : "—";
   return `<div class="head"><div><h2>Tráfego pago · ${esc(rot)}</h2><p>Investimento por dia e por plataforma. ${S.trafego.some(t => t.fonte === "planilha") ? "Os valores marcados com planilha vêm da planilha de planejamento e se atualizam sozinhos." : "Lance o valor investido por plataforma."}</p></div>
     <button class="btn pri" data-new="trafego">Lançar investimento</button></div>
-  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+  <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
     <div class="kpi"><span class="l">Investido</span><span class="v num">${brl(c.ads)}</span><span class="s">${c.receita?pct(c.ads/c.receita)+" do faturamento":""}</span></div>
+    <div class="kpi"><span class="l">Gestão de tráfego</span><span class="v num">${brl(totGest)}</span><span class="s">${gestaoFixos.length ? (P ? "agência, proporcional aos dias" : "agência (custo fixo mensal)") : `<button class="lnk" data-gestao>Cadastrar o custo da agência</button>`}</span></div>
+    <div class="kpi"><span class="l">Custo total do tráfego</span><span class="v num">${brl(custoTotal)}</span><span class="s">anúncios + gestão${c.receita ? " · " + pct(custoTotal/c.receita) + " do faturamento" : ""}</span></div>
     <div class="kpi"><span class="l">Média por ${A ? "mês" : "dia"}</span><span class="v num">${brl(comInv ? tot.tot/comInv : 0)}</span><span class="s">${comInv} ${A ? (comInv===1?"mês":"meses") : (comInv===1?"dia":"dias")} com investimento</span></div>
     <div class="kpi"><span class="l">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""}</span><span class="v num">${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">${c.roasGeral ? "Faturamento ÷ investido" : "Receita vinda de anúncios ÷ investido"}</span></div>
-    <div class="kpi"><span class="l">CAC geral</span><span class="v num">${isFinite(c.cac)?brl(c.cac):"—"}</span><span class="s">Investido ÷ todos os pedidos</span></div>
+    <div class="kpi"><span class="l">CAC geral</span><span class="v num">${c.nPed ? brl(custoTotal/c.nPed) : "—"}</span><span class="s">(anúncios + gestão) ÷ pedidos</span></div>
     <div class="kpi"><span class="l">ROAS mínimo</span><span class="v num">${c.mcPct>0?(1/c.mcPct).toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Abaixo disso o anúncio dá prejuízo</span></div>
   </div>
   <div class="panel"><h3>${tituloRes}</h3><div class="tw"><table>
-    <thead><tr><th>${colRot}</th><th class="n">Facebook</th><th class="n">Google</th>${temOutros ? `<th class="n">Outros</th>` : ""}<th class="n">Total</th><th class="n hide-m">Faturamento</th><th class="n hide-m">ROAS</th></tr></thead>
-    <tbody>${linhasRes.length ? linhasRes.map(l => `<tr${l.clique ? ` class="click" ${l.clique}` : ""}><td>${l.rot}</td><td class="n">${l.fb ? brl(l.fb) : "—"}</td><td class="n">${l.gg ? brl(l.gg) : "—"}</td>${temOutros ? `<td class="n">${l.out ? brl(l.out) : "—"}</td>` : ""}<td class="n"><b>${l.tot ? brl(l.tot) : "—"}</b>${l.tot ? `<div class="meter"><i style="width:${maxTot ? l.tot/maxTot*100 : 0}%"></i></div>` : ""}</td><td class="n hide-m">${l.fat ? brl(l.fat) : "—"}</td><td class="n hide-m">${roasTxt(l.fat, l.tot)}</td></tr>`).join("")
+    <thead><tr><th>${colRot}</th><th class="n">Facebook</th><th class="n">Google</th>${temOutros ? `<th class="n">Outros</th>` : ""}<th class="n">Total</th>${A && totGest ? `<th class="n hide-m">Gestão</th>` : ""}<th class="n hide-m">Faturamento</th><th class="n hide-m">ROAS</th></tr></thead>
+    <tbody>${linhasRes.length ? linhasRes.map(l => `<tr${l.clique ? ` class="click" ${l.clique}` : ""}><td>${l.rot}</td><td class="n">${l.fb ? brl(l.fb) : "—"}</td><td class="n">${l.gg ? brl(l.gg) : "—"}</td>${temOutros ? `<td class="n">${l.out ? brl(l.out) : "—"}</td>` : ""}<td class="n"><b>${l.tot ? brl(l.tot) : "—"}</b>${l.tot ? `<div class="meter"><i style="width:${maxTot ? l.tot/maxTot*100 : 0}%"></i></div>` : ""}</td>${A && totGest ? `<td class="n hide-m">${l.gest ? brl(l.gest) : "—"}</td>` : ""}<td class="n hide-m">${l.fat ? brl(l.fat) : "—"}</td><td class="n hide-m">${roasTxt(l.fat, l.tot)}</td></tr>`).join("")
       : emptyRow(7, "Sem dias neste recorte", "")}</tbody>
-    <tfoot><tr><td>Total</td><td class="n">${brl(tot.fb)}</td><td class="n">${brl(tot.gg)}</td>${temOutros ? `<td class="n">${brl(tot.out)}</td>` : ""}<td class="n">${brl(tot.tot)}</td><td class="n hide-m">${brl(tot.fat)}</td><td class="n hide-m">${roasTxt(tot.fat, tot.tot)}</td></tr></tfoot>
+    <tfoot><tr><td>Total</td><td class="n">${brl(tot.fb)}</td><td class="n">${brl(tot.gg)}</td>${temOutros ? `<td class="n">${brl(tot.out)}</td>` : ""}<td class="n">${brl(tot.tot)}</td>${A && totGest ? `<td class="n hide-m">${brl(totGest)}</td>` : ""}<td class="n hide-m">${brl(tot.fat)}</td><td class="n hide-m">${roasTxt(tot.fat, tot.tot)}</td></tr>
+      ${totGest ? `<tr><td colspan="${temOutros ? 4 : 3}">${A ? "Anúncios + gestão no ano" : "Anúncios + gestão da agência"}</td><td class="n"><b>${brl(custoTotal)}</b></td>${A ? `<td class="hide-m"></td>` : ""}<td class="n hide-m"></td><td class="n hide-m">${roasTxt(tot.fat, custoTotal)}</td></tr>` : ""}</tfoot>
   </table></div>${A ? `<p class="sub" style="margin:10px 0 0">Toque num mês para ver os dias.</p>` : ""}</div>
   <div class="panel"><h3>Por plataforma</h3><div class="tw"><table>
     <thead><tr><th>Plataforma</th><th class="n">Investido</th><th class="n">Cliques</th><th class="n">CPC</th><th class="n">CTR</th><th class="n">Pedidos</th><th class="n">Receita</th><th class="n">ROAS</th><th class="n">Custo/pedido</th></tr></thead>
@@ -1827,6 +1839,7 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  if(e.target.closest("[data-gestao]")){ openForm("fixos", null, {nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: MES}); return; }
   const ma = e.target.closest("[data-marcaant]"); if(ma && !ma.disabled){ marcarAntigos(ma); return; }
   const rp = e.target.closest("[data-regp]"); if(rp){ REGP = rp.dataset.regp; REGUF = ""; render(); return; }
   const ru = e.target.closest("[data-reguf]"); if(ru){ REGUF = REGUF === ru.dataset.reguf ? "" : ru.dataset.reguf; render(); return; }
