@@ -271,7 +271,12 @@ select.flt{border:1px solid var(--line);background:var(--surface);border-radius:
 .fitem{display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 @media (max-width:600px){.fitem{grid-template-columns:minmax(0,1fr)}}
 .prev{width:100%;aspect-ratio:3/4;max-width:100%;border-radius:8px;background:var(--sunken);display:grid;place-items:center;overflow:hidden;color:var(--muted);font-weight:700;font-size:13px}
-.prev img{width:100%;height:100%;object-fit:cover}
+.prev img{width:100%;height:100%;object-fit:cover;object-position:top}
+button.prev{border:1px solid var(--line);padding:0;cursor:zoom-in;position:relative;font:inherit}
+.prev .lupa{position:absolute;left:6px;right:6px;bottom:6px;background:rgba(0,0,0,.72);color:#fff;border-radius:999px;font-size:12px;font-weight:600;padding:5px 8px;text-align:center}
+.visor{max-width:min(980px,100%)!important}
+.visor .folha{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:calc(100vh - 220px);-webkit-overflow-scrolling:touch}
+.visor .folha img{display:block;width:100%;height:auto}
 @media (max-width:600px){.prev{aspect-ratio:auto;height:90px}}
 .fbody{display:flex;flex-direction:column;gap:12px;min-width:0}
 .ftop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -479,7 +484,7 @@ function calcPeriodo(de, ate){
   }
   const taxas = gw + imposto, mc = receita - cpv - taxas - frete;
   const ads = S.trafego.filter(t => dentro(t.data)).reduce((a,t)=>a+num(t.investimento),0);
-  const avulsos = S.variaveis.filter(x => dentro(x.data)).reduce((a,x)=>a+num(x.valor),0);
+  const avulsos = S.variaveis.filter(x => dentro(x.data) && !naoConsiderar(x)).reduce((a,x)=>a+num(x.valor),0);
   const fixos = meses.reduce((a,ym) => a + S.fixos.filter(f => fixoNoMes(f, ym)).reduce((b,f)=>b+num(f.valor),0) * fracao(ym), 0);
   const gestao = meses.reduce((a,ym) => a + S.fixos.filter(f => fixoNoMes(f, ym) && f.categoria === CAT_GESTAO).reduce((b,f)=>b+num(f.valor),0) * fracao(ym), 0);
   const pags = S.pagamentos.filter(p => dentro(p.data));
@@ -517,7 +522,7 @@ function calcMes(ym){
   taxas = gateway + imposto;
   const mc = receita - cpv - taxas - frete;
   const ads = S.trafego.filter(t => (t.data||"").slice(0,7) === ym).reduce((a,t)=>a+num(t.investimento),0);
-  const avulsos = S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
+  const avulsos = S.variaveis.filter(x => (x.data||"").slice(0,7) === ym && !naoConsiderar(x)).reduce((a,x)=>a+num(x.valor),0);
   const fixos = S.fixos.filter(f => fixoNoMes(f, ym)).reduce((a,f)=>a+num(f.valor),0);
   const gestao = S.fixos.filter(f => fixoNoMes(f, ym) && f.categoria === CAT_GESTAO).reduce((a,f)=>a+num(f.valor),0);
   const pags = S.pagamentos.filter(p => pagYm(p) === ym);
@@ -538,7 +543,7 @@ function custosPorCategoria(ym, c){
   const m = {};
   const add = (k, v) => { k = k || "Outros"; m[k] = (m[k]||0) + num(v); };
   S.fixos.filter(f => fixoNoMes(f, ym)).forEach(f => add(f.categoria, f.valor));
-  S.variaveis.filter(x => (x.data||"").slice(0,7) === ym).forEach(x => add(x.categoria, x.valor));
+  S.variaveis.filter(x => (x.data||"").slice(0,7) === ym && !naoConsiderar(x)).forEach(x => add(x.categoria, x.valor));
   m["Funcionárias"] = c.equipe; m["Tráfego pago"] = c.ads; m["Lançamento de coleções"] = c.colecao;
   return m;
 }
@@ -1249,7 +1254,7 @@ function vCustos(){
     </div>
     <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos variáveis do mês</h3><button class="btn" data-new="variaveis">Adicionar</button></div>
       <div class="tw"><table><thead><tr><th>Data</th><th>Descrição</th><th class="n">Valor</th></tr></thead><tbody>
-      ${vr.length ? vr.map(x=>`<tr class="click" data-edit="variaveis" data-id="${x.id}"><td>${dBR(x.data)}</td><td>${esc(x.descricao)}${exBadge(x)}<div class="sub">${esc(x.categoria||"")}</div>${docLinks(x.anexos)}</td><td class="n">${brl(x.valor)}</td></tr>`).join("")
+      ${vr.length ? vr.map(x=>`<tr class="click" data-edit="variaveis" data-id="${x.id}"${naoConsiderar(x) ? ' style="opacity:.45" title="Muller Martins: não entra no resultado por enquanto"' : ""}><td>${dBR(x.data)}</td><td>${esc(x.descricao)}${exBadge(x)}<div class="sub">${esc(x.categoria||"")}</div>${docLinks(x.anexos)}</td><td class="n">${brl(x.valor)}</td></tr>`).join("")
         : emptyRow(3,"Nada lançado neste mês","Manutenção de máquinas, peças piloto, fotos e compras avulsas entram aqui.")}
       </tbody>${vr.length?`<tfoot><tr><td colspan="2">Total</td><td class="n">${brl(c.avulsos)}</td></tr></tfoot>`:""}</table></div>
     </div>
@@ -1579,7 +1584,8 @@ Regras:
 - Pagamento a costureira ou facção por peças produzidas: tipoPagamento "Produção por peça".
 - Luz, água, internet, telefone, aluguel, condomínio, IPTU, seguro, contador, plataforma do site, apps, taxas bancárias, manutenção de máquinas e compras: se houver custo fixo cadastrado da mesma categoria ou fornecedor, destino "fixo" com fixoId; senão destino "variavel" com a categoria mais adequada.
 - Pagamentos ligados ao lançamento de uma coleção (fotógrafo, vídeo maker, modelos, maquiagem e cabelo, locação de espaço para ensaio, styling, cenografia, transporte e alimentação da equipe no ensaio, edição de imagens): destino "colecao", com colecaoId (a coleção em planejamento ou produção mais próxima da data, se o documento não disser qual) e categoriaColecao.
-- Boletos, faturas ou comprovantes de transportadora ou logística (ex.: Muller Martins Logística, Correios, Jadlog, Loggi) referentes a fretes: destino "variavel", categoria "Frete (transportadora)".
+- Qualquer documento da Muller Martins Logística: destino "ignorar" (por enquanto não entra no app).
+- Boletos, faturas ou comprovantes de transportadora ou logística (ex.: Correios, Jadlog, Loggi) referentes a fretes: destino "variavel", categoria "Frete (transportadora)".
 - Faturas ou recibos de Meta, Facebook, Instagram, Google, TikTok ou Pinterest Ads: destino "trafego" com a plataforma.
 - Se não for um documento financeiro: destino "ignorar".
 - Datas no formato AAAA-MM-DD. "data" é a data do pagamento. Se for conta ou boleto sem prova de pagamento, use o vencimento em "data" e pago false.
@@ -1673,7 +1679,7 @@ function lerLinhaDigitavel(t){
 // ----- categoria pelo nome de quem recebe -----
 const CAT_FRETE = "Frete (transportadora)";
 const CAT_PALAVRAS = [
-  [/muller martins|logistica|transportadora|transportes|\bfrete|jadlog|loggi|total express|braspress|correios|kangu|melhor envio|frenet|sequoia|azul cargo/, CAT_FRETE],
+  [/logistica|transportadora|transportes|\bfrete|jadlog|loggi|total express|braspress|correios|kangu|melhor envio|frenet|sequoia|azul cargo/, CAT_FRETE],
   [/aluguel|imobiliaria|locacao|locador/, "Aluguel"], [/condominio|administradora de condom/, "Condomínio"], [/iptu/, "IPTU"],
   [/energia|eletric|celesc|enel|cemig|copel|light s|coelba|cpfl|neoenergia|equatorial/, "Energia elétrica"],
   [/agua|saneamento|casan|sabesp|copasa|sanepar|cedae|embasa/, "Água"],
@@ -1688,10 +1694,23 @@ function funcionariaEm(texto){
   return S.funcionarias.find(f => { const p = semAc(f.nome).split(/\s+/).filter(x => x.length > 2); return p.length && p.slice(0, 2).every(x => s.includes(x)); });
 }
 const COD_IMPOSTO = [["2089","IRPJ"],["2372","CSLL"],["8109","PIS"],["6912","PIS"],["2172","COFINS"],["5856","COFINS"],["0561","IRRF (retido na fonte)"],["0588","IRRF (retido na fonte)"],["1708","IRRF (retido na fonte)"],["3208","IRRF (retido na fonte)"],["1082","INSS / DCTFWeb"],["1099","INSS / DCTFWeb"],["1138","INSS / DCTFWeb"],["1646","INSS / DCTFWeb"]];
+function valorProvavel(t, rotulado){
+  const vals = valoresEm(t); if(!vals.length) return rotulado || 0;
+  const conta = {}; vals.forEach(v => conta[v] = (conta[v]||0) + 1);
+  const repetidos = Object.entries(conta).filter(([,n]) => n >= 2).map(([v,n]) => [+v, n]).sort((a,b) => b[1]-a[1] || b[0]-a[0]);
+  if(rotulado && conta[rotulado] >= 2) return rotulado;
+  if(repetidos.length) return repetidos[0][0];
+  return rotulado || 0;
+}
+// fornecedores cujos custos não entram no app por enquanto (pedido da Seille)
+const NAO_CONSIDERAR = /muller\s*martins|mueller\s*martins/;
+const naoConsiderar = x => NAO_CONSIDERAR.test(semAc([x.descricao, x.nome, x.favorecido, x.fornecedor].join(" ")));
 function base(extra){ return {tipoDocumento:"documento", destino:"variavel", descricao:"", favorecido:"", valor:0, data:today(), pago:true, competencia:"", funcionariaId:null, tipoPagamento:"Salário", formaPagamento:"Pix", categoria:null, fixoId:null, colecaoId:null, categoriaColecao:null, plataforma:null, tipoImposto:null, confianca:0.8, observacao:"", ...extra}; }
 const pagoEm = t => depois(t, /(?:data (?:do |de )?(?:pagamento|arrecadacao|debito|transacao|efetivacao)|pago em|realizad[oa] em|efetuad[oa] em)/i, "data");
 function lerSemIA(texto){
   const t = texto.replace(/\s+/g, " "), s = semAc(t);
+  if(NAO_CONSIDERAR.test(s)) return base({tipoDocumento:"documento da Muller Martins Logística", destino:"ignorar", valor: valorProvavel(t, null), confianca: 0.9,
+    descricao:"Muller Martins Logística", observacao:"Por enquanto os custos da Muller Martins não entram no app. Toque em Descartar."});
   const dataPg = pagoEm(s), temComprovante = /comprovante|autenticacao|pagamento efetuado|pagamento realizado|transacao (?:efetuada|concluida)|recibo/.test(s);
   // 1) guias de imposto
   const ehDas = /documento de arrecadacao do simples nacional|\bdas\b|simples nacional/.test(s), ehMei = /simei|\bmei\b|microempreendedor/.test(s);
@@ -1726,13 +1745,16 @@ function lerSemIA(texto){
   if(linha || /boleto|linha digitavel|codigo de barras|nosso numero/.test(s) || (/beneficiario|cedente/.test(s) && /vencimento/.test(s))){
     const cat = categoriaPor(benef) || categoriaPor(t.slice(0, 300)) || "Outros";
     const fixo = S.fixos.find(x => x.categoria === cat);
-    const valor = linha?.valor || depois(s, /valor (?:do documento|cobrado|pago|total)|\(=\) valor|valor/, "valor") || 0;
+    // valor: a linha digitável conferida é a fonte mais segura; senão, o valor que mais se repete no boleto
+    // (o boleto traz o mesmo valor no recibo do pagador e na ficha de compensação)
+    const rotulado = depois(s, /valor do documento|\(=\) valor (?:do )?(?:documento|cobrado)|valor cobrado|valor a pagar|valor pago|valor total/, "valor");
+    const valor = linha?.valor > 0 ? linha.valor : valorProvavel(t, rotulado);
     const venc = linha?.vencimento || depois(s, /vencimento/, "data");
     const pago = temComprovante && !!(dataPg || /pago/.test(s));
     return base({tipoDocumento: pago ? "comprovante de pagamento de boleto" : "boleto", destino: fixo ? "fixo" : "variavel", fixoId: fixo?.id || null, categoria: cat,
       favorecido: benef, valor, pago, data: (pago ? dataPg : venc) || today(), competencia: (venc || today()).slice(0,7), formaPagamento:"Boleto / guia",
       descricao: [cat !== "Outros" ? cat : "", benef].filter(Boolean).join(" – ") || "Boleto",
-      confianca: linha ? 0.9 : 0.55, observacao: linha ? (pago ? "" : "É o boleto, não o comprovante: confira se já foi pago.") : "Não consegui conferir a linha digitável: confira o valor e o vencimento."});
+      confianca: linha?.valor > 0 ? 0.9 : 0.5, observacao: [linha?.valor > 0 ? "" : "Não consegui conferir a linha digitável: confira o valor e o vencimento.", !linha?.valor && valor > 30000 ? "O valor parece alto demais para este tipo de conta: confira." : "", pago ? "" : "É o boleto, não o comprovante: confira se já foi pago."].filter(Boolean).join(" ")});
   }
   // 4) comprovante de Pix / transferência
   if(/pix|transferencia|\bted\b|\bdoc\b|comprovante/.test(s)){
@@ -1764,6 +1786,38 @@ async function lerFoto(arquivo, it){
   return data.text || "";
 }
 
+// Visualizar o documento inteiro antes de lançar: todas as páginas do PDF (ou a foto) em tamanho grande
+async function abrirVisor(id){
+  const it = S.fila.find(x => x.id === id); if(!it) return;
+  closeModal();
+  const url = URL.createObjectURL(it.file);
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal visor"><div class="ftop"><b class="fn">${esc(it.file.name)}</b><a class="btn" href="${url}" target="_blank" rel="noopener">Abrir o arquivo</a><button type="button" class="btn" id="fcancel">Fechar</button></div>
+    <div class="folha" id="folha"><div class="empty"><span class="spin"></span>Carregando…</div></div></div>`;
+  document.body.appendChild(modalEl);
+  const fechar = () => { closeModal(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  $("#fcancel", modalEl).onclick = fechar;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) fechar(); });
+  const folha = $("#folha", modalEl);
+  try{
+    if(it.file.type === "application/pdf" || /\.pdf$/i.test(it.file.name)){
+      const lib = await getPdfjs();
+      const pdf = await lib.getDocument({data: new Uint8Array(await it.file.arrayBuffer())}).promise;
+      folha.innerHTML = "";
+      for(let i = 1; i <= Math.min(pdf.numPages, 10); i++){
+        const page = await pdf.getPage(i), vp0 = page.getViewport({scale: 1});
+        const vp = page.getViewport({scale: Math.min(3, 2000 / vp0.width)});
+        const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+        const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+        await page.render({canvasContext: ctx, viewport: vp}).promise;
+        const img = document.createElement("img"); img.src = cv.toDataURL("image/jpeg", 0.9); img.alt = "Página " + i;
+        if(!modalEl || !document.body.contains(folha)) return;
+        folha.appendChild(img);
+      }
+      if(pdf.numPages > 10) folha.insertAdjacentHTML("beforeend", `<p class="sub" style="padding:10px">+ ${pdf.numPages - 10} páginas. Toque em Abrir o arquivo para ver tudo.</p>`);
+    } else folha.innerHTML = `<img src="${url}" alt="">`;
+  }catch(e){ folha.innerHTML = `<div class="empty">Não foi possível mostrar aqui. Toque em <b>Abrir o arquivo</b>.</div>`; }
+}
 async function processaFila(){
   if(lendo) return; lendo = true;
   try{
@@ -1819,7 +1873,7 @@ function avisos(it){
   return out;
 }
 function cardLeitor(it){
-  const prev = `<div class="prev">${it.thumb ? `<img src="${it.thumb}" alt="">` : "PDF"}</div>`;
+  const prev = `<button type="button" class="prev" data-ver="${it.id}" aria-label="Ver o documento em tamanho grande">${it.thumb ? `<img src="${it.thumb}" alt="">` : "PDF"}<span class="lupa">Ver documento</span></button>`;
   const head = (pill) => `<div class="ftop"><span class="fn">${esc(it.file.name)}</span>${pill}</div>${it.origem ? `<div class="sub">Recebido por e-mail · ${esc(it.origem)}</div>` : ""}`;
   if(it.status === "aguardando" || it.status === "lendo") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill acc">${it.status==="lendo"?"lendo":"na fila"}</span>`)}<div class="ia"><span class="spin"></span>${it.status==="lendo" ? esc(it.etapa || "Lendo o documento…") : "Aguardando a leitura dos arquivos anteriores."}</div></div></div>`;
   if(it.status === "erro") return `<div class="fitem">${prev}<div class="fbody">${head(`<span class="pill bad">não lido</span>`)}<div class="err">${esc(it.err)}</div><div class="mact"><button class="btn" data-rm="${it.id}">Remover</button><button class="btn pri" data-retry="${it.id}">Tentar de novo</button></div></div></div>`;
@@ -1933,6 +1987,7 @@ function vLeitor(){
 }
 document.addEventListener("click", e => {
   const ok = e.target.closest("[data-ok]"); if(ok){ confirmaLeitor(ok.dataset.ok, ok); return; }
+  const ver = e.target.closest("[data-ver]"); if(ver){ abrirVisor(ver.dataset.ver); return; }
   const rm = e.target.closest("[data-rm]"); if(rm){ const i = S.fila.findIndex(x=>x.id===rm.dataset.rm); if(i>=0){ const it = S.fila[i]; if(it.status !== "salvo") marcaEntrada(it, "descartado"); if(it.thumb) URL.revokeObjectURL(it.thumb); S.fila.splice(i,1); render(); } return; }
   const rt = e.target.closest("[data-retry]"); if(rt){ const it = S.fila.find(x=>x.id===rt.dataset.retry); if(it){ it.status = "aguardando"; render(); processaFila(); } }
 });
