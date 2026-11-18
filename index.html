@@ -120,6 +120,17 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 }
 @media (min-width:1001px){.bar{flex-wrap:wrap}nav.tabs{order:3;flex-basis:100%;margin:4px -12px 0}}
 .seg.full{align-self:stretch}
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ptop .chips{min-width:0}
+.mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (min-width:900px){.mgrid{grid-template-columns:repeat(12,minmax(0,1fr))}}
+.mgrid button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:14px;padding:10px 4px;font-weight:600;font-size:15px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-variant-numeric:tabular-nums}
+.mgrid button small{color:var(--muted);font-weight:500;font-size:12px}
+.mgrid button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mgrid button.on small{color:#BDBDBD}
+.mgrid button.fut{color:#C4C4C4}
+.anobtn{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:11px 16px;font-weight:600;font-size:15px;cursor:pointer;color:var(--ink)}
+.anobtn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .seg.full button{flex:1}
 .orow select.st{flex:none}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -744,18 +755,20 @@ function periodBar(){
   S.vendas.forEach(v => { if(!v.data) return; const y = v.data.slice(0,4); anos.add(y); if(ativa(v)) (porAno[y] ||= new Set()).add(v.pedido || v.id); });
   const porMes = {};
   S.vendas.forEach(v => { if(ativa(v) && (v.data||"").startsWith(ano)) (porMes[v.data.slice(0,7)] ||= new Set()).add(v.pedido || v.id); });
-  const chips = [...anos].sort().reverse().map(y => `<button class="chip${y===ano?" on":""}" data-ano="${y}">${y}<span>${porAno[y]?.size || 0}</span></button>`).join("");
+  const chips = [...anos].sort().reverse().map(y => `<button class="chip${y===ano?" on":""}" data-ano="${y}">${y}</button>`).join("");
+  const mesAtual = today().slice(0,7);
   const meses = MESES.map((m,i) => { const ym = ano + "-" + String(i+1).padStart(2,"0"), n = porMes[ym]?.size || 0;
-    return `<button class="${ym===MES && !anoTodo() && !periodo()?"on":""}" data-ym="${ym}">${m[0].toUpperCase()+m.slice(1)}${n?`<span>${n}</span>`:""}</button>`; }).join("");
-  const ok = ANO_VIEWS.includes(curView()), p = periodo();
-  const btnAno = ok ? `<button class="${anoTodo()?"on":""}" data-ym="ano">Ano todo${porAno[ano]?.size ? `<span>${porAno[ano].size}</span>` : ""}</button><button class="${p?"on":""}" data-ym="periodo">Período</button>` : "";
+    return `<button class="${ym===MES && !anoTodo() && !periodo()?"on":""}${ym > mesAtual && !n ? " fut" : ""}" data-ym="${ym}">${m[0].toUpperCase()+m.slice(1)}<small>${n ? n.toLocaleString("pt-BR") : "—"}</small></button>`; }).join("");
+  const ok = ANO_VIEWS.includes(curView()), p = periodo(), nAno = porAno[ano]?.size || 0;
+  const btnPer = ok ? `<button class="chip${p?" on":""}" data-ym="periodo">Período…</button>` : "";
+  const btnAno = ok ? `<button class="anobtn${anoTodo()?" on":""}" data-ym="ano">Ver o ano todo · ${nAno.toLocaleString("pt-BR")} ${nAno===1?"pedido":"pedidos"}</button>` : "";
   const nP = p ? new Set(S.vendas.filter(v => ativa(v) && v.data >= p.de && v.data <= p.ate).map(v => v.pedido || v.id)).size : 0;
   const linhaPer = p ? `<div class="perrow">
       <label>De <input type="date" id="perde" value="${p.de}" max="${p.ate}"></label>
       <label>Até <input type="date" id="perate" value="${p.ate}" min="${p.de}"></label>
       <span class="atalhos">${[[7,"7 dias"],[30,"30 dias"],[90,"90 dias"]].map(([d,l]) => `<button class="btn" data-perdias="${d}">${l}</button>`).join("")}</span>
       <span class="sub">${nP} ${nP===1?"pedido":"pedidos"} · ${daysBetween(p.de,p.ate)+1} dias</span></div>` : "";
-  return `<div class="period"><div class="chips" role="tablist" aria-label="Ano">${chips}</div><div class="seg" role="tablist" aria-label="Mês">${btnAno}${meses}</div>${linhaPer}</div>`;
+  return `<div class="period"><div class="ptop"><div class="chips" role="tablist" aria-label="Ano">${chips}</div>${btnPer}</div>${linhaPer}<div class="mgrid" role="tablist" aria-label="Mês">${meses}</div>${btnAno}</div>`;
 }
 function saudacao(){
   const e = (window.seilleAuth?.email || "").split("@")[0].split(/[._\-+0-9]/).filter(Boolean)[0] || "Seille";
@@ -1703,7 +1716,7 @@ function render(){
   const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
   if(v === "painel") bindChart();
-  const on = $("#main .seg .on[data-ym]"); if(on){ const sg = on.parentElement; sg.scrollLeft = on.offsetLeft - sg.clientWidth/2 + on.clientWidth/2; }
+
   if(v === "ajustes") bindAjustes();
 }
 
