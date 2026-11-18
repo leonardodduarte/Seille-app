@@ -391,7 +391,7 @@ const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora
 const POR_PECA = "Produção por peça";
 const FORMAS = ["Pix","Transferência","Dinheiro","Boleto / guia"];
 const COLS = ["produtos","vendas","fixos","variaveis","trafego","funcionarias","pagamentos","colecoes","custosColecao","impostos","metas"];
-const TIPOS_IMP = ["DAS – Simples Nacional","DAS-MEI","ICMS / DIFAL","ISS","IRPJ / CSLL","PIS / COFINS","Parcelamento de impostos","Outro imposto"];
+const TIPOS_IMP = ["DAS – Simples Nacional","DAS-MEI","IRPJ","CSLL","PIS","COFINS","IRRF (retido na fonte)","INSS / DCTFWeb","ICMS / DIFAL","ISS","Parcelamento de impostos","IRPJ / CSLL","PIS / COFINS","Outro imposto"];
 const CAT_COL = ["Fotógrafo","Vídeo maker","Modelos","Maquiagem e cabelo","Locação do espaço","Styling e produção de moda","Cenografia e objetos","Transporte","Alimentação","Edição e tratamento de imagens","Peças piloto do lançamento","Divulgação do lançamento","Outros"];
 const STATUS_COL = ["Planejamento","Em produção","Lançada","Encerrada"];
 const STATUS_COL_CLS = {"Planejamento":"", "Em produção":"acc", "Lançada":"good", "Encerrada":""};
@@ -1573,8 +1573,8 @@ Tipos de imposto: ${TIPOS_IMP.join("; ")}
 
 Regras:
 - Holerite, recibo de salário, ou Pix/transferência para uma pessoa da equipe: destino "funcionaria". Use o valor LÍQUIDO efetivamente pago. Case o favorecido com uma funcionária cadastrada pelo nome (ignore acentos, maiúsculas e sobrenomes faltando) e devolva o id; se nenhuma casar, funcionariaId null e informe o nome em "favorecido".
-- Guia de INSS, FGTS, DAE ou eSocial de funcionária: destino "funcionaria", tipoPagamento "INSS / FGTS / encargos".
-- Guia ou comprovante de imposto da empresa (DAS do Simples Nacional, DAS-MEI, ICMS, DIFAL, ISS, IRPJ, CSLL, PIS, COFINS, parcelamento): destino "imposto", com tipoImposto e "competencia" igual ao período de apuração da guia.
+- DARF, DAS, DAS-MEI, DCTFWeb e guias da Receita Federal, da SEFAZ (ICMS, DIFAL) ou da prefeitura (ISS), mesmo que tragam INSS: destino "imposto". Escolha "tipoImposto" pelo código da receita ou pelo nome do tributo: DAS do Simples → "DAS – Simples Nacional"; DAS-MEI → "DAS-MEI"; 2089 ou IRPJ → "IRPJ"; 2372 ou CSLL → "CSLL"; 8109, 6912 ou PIS → "PIS"; 2172, 5856 ou COFINS → "COFINS"; 0561, 0588, 1708, 3208 ou IRRF → "IRRF (retido na fonte)"; DCTFWeb, 1082, 1099, 1138, 1646 ou contribuição previdenciária → "INSS / DCTFWeb"; ICMS ou DIFAL → "ICMS / DIFAL"; ISS → "ISS"; parcelamento → "Parcelamento de impostos". Se a guia tiver mais de um tributo, use o principal (o de maior valor) e cite os outros em "descricao". "competencia" é o PERÍODO DE APURAÇÃO da guia (AAAA-MM), não o vencimento. "valor" é o VALOR TOTAL (principal + multa + juros). Se houver autenticação bancária ou comprovante de pagamento, pago true e "data" é a data do pagamento; se for só a guia, pago false e "data" é o vencimento. Em "descricao" coloque o código da receita e o período, ex.: "DARF 2089 IRPJ – apuração 10/2026".
+- FGTS Digital, GPS ou guia do eSocial ligada a uma funcionária específica: destino "funcionaria", tipoPagamento "INSS / FGTS / encargos".
 - Pagamento a costureira ou facção por peças produzidas: tipoPagamento "Produção por peça".
 - Luz, água, internet, telefone, aluguel, condomínio, IPTU, seguro, contador, plataforma do site, apps, taxas bancárias, manutenção de máquinas e compras: se houver custo fixo cadastrado da mesma categoria ou fornecedor, destino "fixo" com fixoId; senão destino "variavel" com a categoria mais adequada.
 - Pagamentos ligados ao lançamento de uma coleção (fotógrafo, vídeo maker, modelos, maquiagem e cabelo, locação de espaço para ensaio, styling, cenografia, transporte e alimentação da equipe no ensaio, edição de imagens): destino "colecao", com colecaoId (a coleção em planejamento ou produção mais próxima da data, se o documento não disser qual) e categoriaColecao.
@@ -1609,7 +1609,7 @@ function normaliza(r){
   if(o.destino === "colecao" && !S.colecoes.length) o.destino = "variavel";
   return o;
 }
-const ERR_IA = {not_granted:"A leitura automática não está liberada para esta conta.", rate_limited:"Muitas leituras ao mesmo tempo. Aguarde um minuto e toque em Tentar de novo.", images_unavailable:"Esta visualização não aceita imagens. Envie o PDF original do comprovante.", image_rejected:"A imagem não pôde ser lida. Tente uma foto em JPG ou PNG."};
+const ERR_IA = {sem_chave:"A leitura com IA ainda não foi ativada: falta cadastrar a chave ANTHROPIC_API_KEY nos Secrets do Supabase.", not_granted:"A leitura automática não está liberada para esta conta.", rate_limited:"Muitas leituras ao mesmo tempo. Aguarde um minuto e toque em Tentar de novo.", images_unavailable:"Esta visualização não aceita imagens. Envie o PDF original do comprovante.", image_rejected:"A imagem não pôde ser lida. Tente uma foto em JPG ou PNG."};
 let lendo = false;
 async function processaFila(){
   if(lendo) return; lendo = true;

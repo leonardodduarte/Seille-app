@@ -37,3 +37,7 @@ jobs:
 
       - name: Publicar planilha
         run: supabase functions deploy planilha --project-ref "$PROJECT_REF" --no-verify-jwt --yes
+
+      # Leitura de documentos com IA (aba Adicionar documentos); confere sozinha se quem chama é membro
+      - name: Publicar ler-comprovante
+        run: supabase functions deploy ler-comprovante --project-ref "$PROJECT_REF" --no-verify-jwt --yes

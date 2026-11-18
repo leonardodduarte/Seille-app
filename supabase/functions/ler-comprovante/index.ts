@@ -14,7 +14,9 @@ const resposta = (corpo: unknown, status = 200) =>
 
 const TIPOS_IMAGEM = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const chaveDoJson = (nome: string) => { try { const o = JSON.parse(Deno.env.get(nome) ?? "{}"); return String(o.default ?? Object.values(o)[0] ?? ""); } catch { return ""; } };
-const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
+// O cliente do Claude é criado só quando a chave existe (sem ela, a função avisa em vez de quebrar)
+let anthropic: Anthropic | null = null;
+const claude = () => (anthropic ??= new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") }));
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -49,7 +51,8 @@ Deno.serve(async (req) => {
   ];
 
   try {
-    const msg = await anthropic.beta.messages.create({
+    if (!Deno.env.get("ANTHROPIC_API_KEY")) return resposta({ code: "sem_chave" }, 503);
+    const msg = await claude().beta.messages.create({
       model: "claude-opus-5-5",
       max_tokens: 8000,
       betas: ["server-side-fallback-2026-07-01"],

@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.planilha]
 verify_jwt = false
+
+[functions.ler-comprovante]
+verify_jwt = false
