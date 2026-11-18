@@ -375,7 +375,7 @@ const STATUS_CLS = {"Recebido":"", "Em produção":"acc", "Pronto":"warn", "Envi
 const GRUPOS = [
   ["Estrutura do ateliê", ["Aluguel","Condomínio","IPTU","Energia elétrica","Água","Internet e telefone","Seguros"], "fixos"],
   ["Pessoas", ["Funcionárias","Pró-labore"], "fixos"],
-  ["Produção", ["Manutenção de máquinas","Peça piloto e modelagem","Tecido / estoque","Embalagens em lote","Material de limpeza e escritório"], "variaveis"],
+  ["Produção", ["Frete (transportadora)","Manutenção de máquinas","Peça piloto e modelagem","Tecido / estoque","Embalagens em lote","Material de limpeza e escritório"], "variaveis"],
   ["Administrativo", ["Contador","Plataforma do e-commerce","Softwares e apps","Taxas bancárias","Empréstimos e financiamentos"], "fixos"],
   ["Marketing", ["Tráfego pago","Gestão de tráfego","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
   ["Outros", ["Outros"], "variaveis"],
@@ -1579,6 +1579,7 @@ Regras:
 - Pagamento a costureira ou facção por peças produzidas: tipoPagamento "Produção por peça".
 - Luz, água, internet, telefone, aluguel, condomínio, IPTU, seguro, contador, plataforma do site, apps, taxas bancárias, manutenção de máquinas e compras: se houver custo fixo cadastrado da mesma categoria ou fornecedor, destino "fixo" com fixoId; senão destino "variavel" com a categoria mais adequada.
 - Pagamentos ligados ao lançamento de uma coleção (fotógrafo, vídeo maker, modelos, maquiagem e cabelo, locação de espaço para ensaio, styling, cenografia, transporte e alimentação da equipe no ensaio, edição de imagens): destino "colecao", com colecaoId (a coleção em planejamento ou produção mais próxima da data, se o documento não disser qual) e categoriaColecao.
+- Boletos, faturas ou comprovantes de transportadora ou logística (ex.: Muller Martins Logística, Correios, Jadlog, Loggi) referentes a fretes: destino "variavel", categoria "Frete (transportadora)".
 - Faturas ou recibos de Meta, Facebook, Instagram, Google, TikTok ou Pinterest Ads: destino "trafego" com a plataforma.
 - Se não for um documento financeiro: destino "ignorar".
 - Datas no formato AAAA-MM-DD. "data" é a data do pagamento. Se for conta ou boleto sem prova de pagamento, use o vencimento em "data" e pago false.
@@ -1670,7 +1671,9 @@ function lerLinhaDigitavel(t){
   return null;
 }
 // ----- categoria pelo nome de quem recebe -----
+const CAT_FRETE = "Frete (transportadora)";
 const CAT_PALAVRAS = [
+  [/muller martins|logistica|transportadora|transportes|\bfrete|jadlog|loggi|total express|braspress|correios|kangu|melhor envio|frenet|sequoia|azul cargo/, CAT_FRETE],
   [/aluguel|imobiliaria|locacao|locador/, "Aluguel"], [/condominio|administradora de condom/, "Condomínio"], [/iptu/, "IPTU"],
   [/energia|eletric|celesc|enel|cemig|copel|light s|coelba|cpfl|neoenergia|equatorial/, "Energia elétrica"],
   [/agua|saneamento|casan|sabesp|copasa|sanepar|cedae|embasa/, "Água"],
@@ -1721,7 +1724,7 @@ function lerSemIA(texto){
   const linha = lerLinhaDigitavel(t);
   const benef = (depois(t, /benefici[aá]rio(?: final)?|cedente|favorecido|empresa|raz[aã]o social/i, "texto", 80) || "").replace(/^[:\s-]+/, "").replace(/\s*(?:CNPJ|CPF|Ag[eê]ncia|Endere[cç]o|Data|Valor).*$/i, "").trim().slice(0, 60);
   if(linha || /boleto|linha digitavel|codigo de barras|nosso numero/.test(s) || (/beneficiario|cedente/.test(s) && /vencimento/.test(s))){
-    const cat = categoriaPor(benef + " " + t.slice(0, 300)) || "Outros";
+    const cat = categoriaPor(benef) || categoriaPor(t.slice(0, 300)) || "Outros";
     const fixo = S.fixos.find(x => x.categoria === cat);
     const valor = linha?.valor || depois(s, /valor (?:do documento|cobrado|pago|total)|\(=\) valor|valor/, "valor") || 0;
     const venc = linha?.vencimento || depois(s, /vencimento/, "data");
@@ -1807,6 +1810,7 @@ function addFiles(list){
 const DEST = [["funcionaria","Pagamento a funcionária"],["colecao","Custo de lançamento de coleção"],["variavel","Custo do mês"],["fixo","Comprovante de custo fixo"],["trafego","Tráfego pago"],["imposto","Imposto pago"],["ignorar","Não lançar"]];
 function avisos(it){
   const g = it.sug, out = [];
+  if(g.destino === "variavel" && g.categoria === CAT_FRETE && S.vendas.some(v => num(v.fretePago) > 0)) out.push("Os pedidos da loja já trazem o frete pago de cada venda. Se este boleto é o mesmo frete, lançá-lo conta em dobro no resultado.");
   if(!g.pago) out.push("Este documento parece ser uma conta ou boleto, sem prova de pagamento.");
   if(g.destino === "variavel"){ const fx = S.fixos.find(f => f.categoria === g.categoria && fixoNoMes(f, g.competencia)); if(fx) out.push(`Já existe o custo fixo "${fx.nome}" nesta categoria. Lançar como custo do mês vai contar duas vezes; prefira "Comprovante de custo fixo".`); }
   if(g.destino === "funcionaria" && g.funcionariaId && S.pagamentos.some(p => p.funcionariaId === g.funcionariaId && Math.abs(num(p.valor)-g.valor) < 0.01 && p.data === g.data)) out.push("Já existe um pagamento igual (mesma pessoa, valor e data).");
