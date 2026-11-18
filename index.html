@@ -120,7 +120,9 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 }
 @media (min-width:1001px){.bar{flex-wrap:wrap}nav.tabs{order:3;flex-basis:100%;margin:4px -12px 0}}
 .seg.full{align-self:stretch}
-.ptop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.seg.modo{margin-left:auto}
+@media (max-width:600px){.seg.modo{margin-left:0;flex:1 1 100%}.seg.modo button{flex:1}}
 .ptop .chips{min-width:0}
 .mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 @media (min-width:900px){.mgrid{grid-template-columns:repeat(12,minmax(0,1fr))}}
@@ -392,7 +394,7 @@ const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], vari
 let PAGF = "";
 let MES = today().slice(0,7);
 let ANO = false; // true = "Ano todo" (Painel e Pedidos mostram o ano inteiro)
-const ANO_VIEWS = ["painel","pedidos"];
+const ANO_VIEWS = ["painel","pedidos","trafego"];
 let PER = null; // {de, ate}: período de tal dia até tal dia (Painel e Pedidos)
 const periodo = () => PER && ANO_VIEWS.includes(curView()) ? PER : null;
 const anoTodo = () => ANO && !PER && ANO_VIEWS.includes(curView());
@@ -771,8 +773,9 @@ function periodBar(){
   const meses = MESES.map((m,i) => { const ym = ano + "-" + String(i+1).padStart(2,"0"), n = porMes[ym]?.size || 0;
     return `<button class="${ym===MES && !anoTodo() && !periodo()?"on":""}${ym > mesAtual && !n ? " fut" : ""}" data-ym="${ym}">${m[0].toUpperCase()+m.slice(1)}<small>${n ? n.toLocaleString("pt-BR") : "—"}</small></button>`; }).join("");
   const ok = ANO_VIEWS.includes(curView()), p = periodo(), nAno = porAno[ano]?.size || 0;
-  const btnPer = ok ? `<button class="chip${p?" on":""}" data-ym="periodo">Período…</button>` : "";
-  const btnAno = ok ? `<button class="anobtn${anoTodo()?" on":""}" data-ym="ano">Ver o ano todo · ${nAno.toLocaleString("pt-BR")} ${nAno===1?"pedido":"pedidos"}</button>` : "";
+  const modo = p ? "periodo" : anoTodo() ? "ano" : "mes";
+  const btnPer = ok ? `<div class="seg modo" role="tablist" aria-label="Ver por"><button class="${modo==="mes"?"on":""}" data-modo="mes">Mês</button><button class="${modo==="ano"?"on":""}" data-ym="ano">Ano${nAno ? `<span>${nAno.toLocaleString("pt-BR")}</span>` : ""}</button><button class="${modo==="periodo"?"on":""}" data-ym="periodo">Período</button></div>` : "";
+  const btnAno = "";
   const nP = p ? new Set(S.vendas.filter(v => ativa(v) && v.data >= p.de && v.data <= p.ate).map(v => v.pedido || v.id)).size : 0;
   const linhaPer = p ? `<div class="perrow">
       <label>De <input type="date" id="perde" value="${p.de}" max="${p.ate}"></label>
@@ -1288,31 +1291,55 @@ function vImpostos(){
   <p class="sub">Encargos de funcionárias (INSS, FGTS) continuam em Funcionárias, para não contar duas vezes.</p>`;
 }
 function vTrafego(){
-  const ts = S.trafego.filter(t => (t.data||"").slice(0,7) === MES).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
-  const c = calcMes(MES);
+  const P = periodo(), A = anoTodo(), ano = MES.slice(0,4), rot = rotuloRecorte();
+  const ts = S.trafego.filter(t => noRecorte(t.data)).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+  const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
   const by = {};
   for(const t of ts){ const k=t.plataforma||"Outro"; by[k]=by[k]||{inv:0,imp:0,cli:0,ped:new Set(),rec:0}; by[k].inv+=num(t.investimento); by[k].imp+=num(t.impressoes); by[k].cli+=num(t.cliques); }
   for(const v of c.vs){ if(PLATAFORMAS.includes(v.origem)){ const k=v.origem; by[k]=by[k]||{inv:0,imp:0,cli:0,ped:new Set(),rec:0}; by[k].ped.add(v.pedido||v.id); by[k].rec+=vendaCalc(v).receita; } }
   const rows = Object.entries(by).sort((a,b)=>b[1].inv-a[1].inv);
-  return `<div class="head"><div><h2>Tráfego pago em ${ymLabel(MES)}</h2><p>Lance o valor investido por plataforma. As vendas são atribuídas pela origem informada em cada pedido.</p></div>
+  // resumo: por dia (mês ou período) ou por mês (ano)
+  const plat = t => t.plataforma === "Meta Ads" ? "fb" : t.plataforma === "Google Ads" ? "gg" : "out";
+  const temOutros = ts.some(t => plat(t) === "out");
+  const fatDia = {}; S.vendas.forEach(v => { if(ativa(v) && v.data) fatDia[v.data] = (fatDia[v.data]||0) + vendaCalc(v).receita; });
+  const soma = (filtro) => { const o = {fb:0, gg:0, out:0}; S.trafego.filter(filtro).forEach(t => o[plat(t)] += num(t.investimento)); o.tot = o.fb + o.gg + o.out; return o; };
+  let linhasRes = [], tituloRes, colRot;
+  if(A){
+    tituloRes = `Investimento mês a mês em ${ano}`; colRot = "Mês";
+    linhasRes = MESES.map((m,i) => { const ym = ano + "-" + String(i+1).padStart(2,"0"); const o = soma(t => (t.data||"").startsWith(ym)); const fat = Object.entries(fatDia).filter(([d]) => d.startsWith(ym)).reduce((a,[,v])=>a+v,0); return {rot: ymLabel(ym), ...o, fat, clique: `data-ym="${ym}"`}; });
+  } else {
+    const R = recorteAtual(); tituloRes = `Investimento por dia · ${rot}`; colRot = "Dia";
+    for(let d = R.de; d <= R.ate; d = addDays(d, 1)){ const o = soma(t => t.data === d); linhasRes.push({rot: `${dBR(d).slice(0,5)} <span class="sub">${new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","")}</span>`, ...o, fat: fatDia[d]||0}); }
+  }
+  const tot = linhasRes.reduce((a,l) => ({fb:a.fb+l.fb, gg:a.gg+l.gg, out:a.out+l.out, tot:a.tot+l.tot, fat:a.fat+l.fat}), {fb:0,gg:0,out:0,tot:0,fat:0});
+  const maxTot = Math.max(0, ...linhasRes.map(l => l.tot));
+  const comInv = linhasRes.filter(l => l.tot > 0).length;
+  const roasTxt = (fat, inv) => inv ? (fat/inv).toLocaleString("pt-BR",{maximumFractionDigits:1}) + "×" : "—";
+  return `<div class="head"><div><h2>Tráfego pago · ${esc(rot)}</h2><p>Investimento por dia e por plataforma. ${S.trafego.some(t => t.fonte === "planilha") ? "Os valores marcados com planilha vêm da planilha de planejamento e se atualizam sozinhos." : "Lance o valor investido por plataforma."}</p></div>
     <button class="btn pri" data-new="trafego">Lançar investimento</button></div>
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="kpi"><span class="l">Investido</span><span class="v num">${brl(c.ads)}</span><span class="s">${c.receita?pct(c.ads/c.receita)+" do faturamento":""}</span></div>
-    <div class="kpi"><span class="l">ROAS</span><span class="v num">${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Receita vinda de anúncios ÷ investido</span></div>
+    <div class="kpi"><span class="l">Média por ${A ? "mês" : "dia"}</span><span class="v num">${brl(comInv ? tot.tot/comInv : 0)}</span><span class="s">${comInv} ${A ? (comInv===1?"mês":"meses") : (comInv===1?"dia":"dias")} com investimento</span></div>
+    <div class="kpi"><span class="l">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""}</span><span class="v num">${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">${c.roasGeral ? "Faturamento ÷ investido" : "Receita vinda de anúncios ÷ investido"}</span></div>
     <div class="kpi"><span class="l">CAC geral</span><span class="v num">${isFinite(c.cac)?brl(c.cac):"—"}</span><span class="s">Investido ÷ todos os pedidos</span></div>
     <div class="kpi"><span class="l">ROAS mínimo</span><span class="v num">${c.mcPct>0?(1/c.mcPct).toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Abaixo disso o anúncio dá prejuízo</span></div>
   </div>
+  <div class="panel"><h3>${tituloRes}</h3><div class="tw"><table>
+    <thead><tr><th>${colRot}</th><th class="n">Facebook</th><th class="n">Google</th>${temOutros ? `<th class="n">Outros</th>` : ""}<th class="n">Total</th><th class="n hide-m">Faturamento</th><th class="n hide-m">ROAS</th></tr></thead>
+    <tbody>${linhasRes.length ? linhasRes.map(l => `<tr${l.clique ? ` class="click" ${l.clique}` : ""}><td>${l.rot}</td><td class="n">${l.fb ? brl(l.fb) : "—"}</td><td class="n">${l.gg ? brl(l.gg) : "—"}</td>${temOutros ? `<td class="n">${l.out ? brl(l.out) : "—"}</td>` : ""}<td class="n"><b>${l.tot ? brl(l.tot) : "—"}</b>${l.tot ? `<div class="meter"><i style="width:${maxTot ? l.tot/maxTot*100 : 0}%"></i></div>` : ""}</td><td class="n hide-m">${l.fat ? brl(l.fat) : "—"}</td><td class="n hide-m">${roasTxt(l.fat, l.tot)}</td></tr>`).join("")
+      : emptyRow(7, "Sem dias neste recorte", "")}</tbody>
+    <tfoot><tr><td>Total</td><td class="n">${brl(tot.fb)}</td><td class="n">${brl(tot.gg)}</td>${temOutros ? `<td class="n">${brl(tot.out)}</td>` : ""}<td class="n">${brl(tot.tot)}</td><td class="n hide-m">${brl(tot.fat)}</td><td class="n hide-m">${roasTxt(tot.fat, tot.tot)}</td></tr></tfoot>
+  </table></div>${A ? `<p class="sub" style="margin:10px 0 0">Toque num mês para ver os dias.</p>` : ""}</div>
   <div class="panel"><h3>Por plataforma</h3><div class="tw"><table>
     <thead><tr><th>Plataforma</th><th class="n">Investido</th><th class="n">Cliques</th><th class="n">CPC</th><th class="n">CTR</th><th class="n">Pedidos</th><th class="n">Receita</th><th class="n">ROAS</th><th class="n">Custo/pedido</th></tr></thead>
-    <tbody>${rows.length ? rows.map(([k,v])=>{const r = v.inv? v.rec/v.inv : NaN; const min = c.mcPct>0?1/c.mcPct:Infinity; return `<tr><td><b>${esc(k)}</b></td><td class="n">${brl(v.inv)}</td><td class="n">${intf(v.cli)}</td><td class="n">${v.cli?brl(v.inv/v.cli):"—"}</td><td class="n">${v.imp?pct(v.cli/v.imp,2):"—"}</td><td class="n">${v.ped.size}</td><td class="n">${brl(v.rec)}</td><td class="n">${isFinite(r)?`<span class="pill ${r>=min?"good":"bad"}">${r.toLocaleString("pt-BR",{maximumFractionDigits:2})}×</span>`:"—"}</td><td class="n">${v.ped.size?brl(v.inv/v.ped.size):"—"}</td></tr>`}).join("")
+    <tbody>${rows.length ? rows.map(([k,v])=>{const r = v.inv? v.rec/v.inv : NaN; const min = c.mcPct>0?1/c.mcPct:Infinity; return `<tr><td><b>${esc(k)}</b></td><td class="n">${brl(v.inv)}</td><td class="n">${v.cli?intf(v.cli):"—"}</td><td class="n">${v.cli?brl(v.inv/v.cli):"—"}</td><td class="n">${v.imp?pct(v.cli/v.imp,2):"—"}</td><td class="n">${v.ped.size||"—"}</td><td class="n">${v.rec?brl(v.rec):"—"}</td><td class="n">${isFinite(r)&&v.rec?`<span class="pill ${r>=min?"good":"bad"}">${r.toLocaleString("pt-BR",{maximumFractionDigits:2})}×</span>`:"—"}</td><td class="n">${v.ped.size?brl(v.inv/v.ped.size):"—"}</td></tr>`}).join("")
       : emptyRow(9,"Sem investimento lançado","Lance quanto foi gasto no Meta Ads, Google Ads ou com influenciadoras.")}</tbody>
-  </table></div></div>
-  ${S.trafego.some(t => t.fonte === "planilha") ? `<p class="sub" style="margin:0">Os lançamentos marcados com <b>planilha</b> vêm da planilha de planejamento e são atualizados sozinhos. Para mudar esses valores, altere na planilha.</p>` : ""}
-  <div class="panel"><h3>Lançamentos</h3><div class="tw"><table>
+  </table></div>${rows.some(([,v]) => v.inv) && !rows.some(([,v]) => v.rec) ? `<p class="sub" style="margin:10px 0 0">Pedidos e receita por plataforma aparecem quando o pedido tem a origem do anúncio. Os pedidos da loja chegam sem essa informação; por isso o ROAS acima usa o faturamento total.</p>` : ""}</div>
+  <details class="panel"${A ? "" : " open"}><summary style="cursor:pointer"><b>Lançamentos</b> <span class="sub">(${ts.length})</span></summary><div class="tw" style="margin-top:10px"><table>
     <thead><tr><th>Data</th><th>Plataforma</th><th>Campanha</th><th class="n">Impressões</th><th class="n">Cliques</th><th class="n">Investido</th></tr></thead>
-    <tbody>${ts.length ? ts.map(t=>`<tr class="click" data-edit="trafego" data-id="${t.id}"><td>${dBR(t.data)}</td><td>${esc(t.plataforma)}${exBadge(t)}${t.fonte === "planilha" ? ` <span class="tag" style="color:var(--muted)">planilha</span>` : ""}</td><td>${esc(t.campanha||"")}</td><td class="n">${intf(t.impressoes)}</td><td class="n">${intf(t.cliques)}</td><td class="n">${brl(t.investimento)}</td></tr>`).join("")
-      : emptyRow(6,"Nenhum lançamento neste mês","Pode lançar por dia, por semana ou o total do mês.")}</tbody>
-  </table></div></div>`;
+    <tbody>${ts.length ? ts.slice(0, 400).map(t=>`<tr class="click" data-edit="trafego" data-id="${t.id}"><td>${dBR(t.data)}</td><td>${esc(t.plataforma)}${exBadge(t)}${t.fonte === "planilha" ? ` <span class="tag" style="color:var(--muted)">planilha</span>` : ""}</td><td>${esc(t.campanha||"")}</td><td class="n">${t.impressoes?intf(t.impressoes):"—"}</td><td class="n">${t.cliques?intf(t.cliques):"—"}</td><td class="n">${brl(t.investimento)}</td></tr>`).join("")
+      : emptyRow(6,"Nenhum lançamento","Pode lançar por dia, por semana ou o total do mês.")}</tbody>
+  </table></div></details>`;
 }
 
 S.planilha = null; let planilhaLendo = false, planilhaUlt = 0;
@@ -1767,6 +1794,7 @@ document.addEventListener("click", e => {
     else if(k === "periodo"){ if(!PER){ const fim = MES + "-" + String(new Date(+MES.slice(0,4), +MES.slice(5,7), 0).getDate()).padStart(2,"0"); PER = {de: MES + "-01", ate: fim < today() ? fim : today()}; } }
     else { ANO = false; PER = null; MES = k; }
     PEDLIM = 100; render(); return; }
+  if(e.target.closest("[data-modo]")){ ANO = false; PER = null; PEDLIM = 100; render(); return; }
   const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
   const pf2 = e.target.closest("[data-pedf]"); if(pf2){ PEDF = pf2.dataset.pedf; render(); return; }
   const cs = e.target.closest("[data-colsel]"); if(cs){ COLSEL = cs.dataset.colsel; render(); return; }
