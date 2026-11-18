@@ -1,0 +1,8 @@
+# Configuração usada pela publicação automática (GitHub → Supabase)
+project_id = "bbpwibqysasqopiqelvd"
+
+[functions.nuvemshop]
+verify_jwt = false
+
+[functions.planilha]
+verify_jwt = false
