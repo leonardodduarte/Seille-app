@@ -1789,13 +1789,13 @@ function vContador(){
       ${L("(+) Frete cobrado das clientes", r.frete, "minus")}
       ${L("(−) Descontos de cupom", -r.cupom, "minus")}
       ${L("(−) Desconto por forma de pagamento (Pix)", -r.pagto, "minus")}
-      ${r.outros ? L("(−) Outros descontos", -r.outros, "minus", "promoções ou desconto sem detalhe") : ""}
+      ${r.outros ? L("(−) Promoções e outros descontos", -r.outros, "minus", "promoções da loja ou desconto ainda sem detalhe") : ""}
       ${L("= Valor dos pedidos", r.valorPedidos, "tot")}
       ${L("(−) Cancelamentos e estornos", -r.devol, "minus", `${r.cancelados.length} ${r.cancelados.length===1?"pedido cancelado":"pedidos cancelados"} no período, depois de pagos`)}
       ${L("(−) Trocas e devoluções", -r.trocaV, "minus", `${r.trocas.length} ${r.trocas.length===1?"marcado":"marcados"} no app`)}
-      ${L("= Base para o Simples Nacional", r.liquida, "tot big", "inclui o frete; descontos de cupom e Pix, cancelamentos, trocas e devoluções ficam de fora")}
+      ${L("= Base para o Simples Nacional", r.liquida, "tot big", "inclui o frete; descontos (cupom, Pix e promoções), cancelamentos, trocas e devoluções ficam de fora")}
     </tbody></table>
-    ${r.cupom + r.pagto ? `<p class="sub" style="margin:10px 0 0">Neste período, <b>${brl(r.cupom + r.pagto)}</b> em descontos de cupom e Pix não entram na base${r.devol + r.trocaV ? `, além de <b>${brl(r.devol + r.trocaV)}</b> em cancelamentos, trocas e devoluções` : ""}.</p>` : ""}</div>
+    ${r.cupom + r.pagto + r.outros ? `<p class="sub" style="margin:10px 0 0">Neste período, <b>${brl(r.cupom + r.pagto + r.outros)}</b> em descontos (cupom, Pix e promoções) não entram na base${r.devol + r.trocaV ? `, além de <b>${brl(r.devol + r.trocaV)}</b> em cancelamentos, trocas e devoluções` : ""}.</p>` : ""}</div>
     <div class="panel"><h3>Recebido por forma de pagamento</h3><div class="tw"><table><thead><tr><th>Forma</th><th class="n">Valor</th></tr></thead><tbody>
       ${Object.entries(r.formas).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${brl(v)}</td></tr>`).join("") || emptyRow(2, "Sem vendas", "")}
     </tbody></table></div></div>
@@ -1815,9 +1815,9 @@ function textoContador(){
   const [de, ate] = faixaRecorte(), r = resumoContador(d => !!d && d >= de && d <= ate);
   return [`Seille · resumo de vendas · ${rotuloRecorte()}`, ``,
     `Vendas pagas (peças): ${brl(r.pecas)} (${r.vendidos.length} pedidos)`, `Frete cobrado: ${brl(r.frete)}`,
-    `Descontos de cupom: -${brl(r.cupom)}`, `Desconto por forma de pagamento (Pix): -${brl(r.pagto)}`, ...(r.outros ? [`Outros descontos: -${brl(r.outros)}`] : []),
+    `Descontos de cupom: -${brl(r.cupom)}`, `Desconto por forma de pagamento (Pix): -${brl(r.pagto)}`, ...(r.outros ? [`Promoções e outros descontos: -${brl(r.outros)}`] : []),
     `Valor dos pedidos: ${brl(r.valorPedidos)}`, `Cancelamentos e estornos: -${brl(r.devol)} (${r.cancelados.length})`, `Trocas e devoluções: -${brl(r.trocaV)} (${r.trocas.length})`,
-    ``, `BASE PARA O SIMPLES NACIONAL: ${brl(r.liquida)}`, `(inclui o frete; descontos de cupom e Pix, cancelamentos, trocas e devoluções já descontados)`].join("\n");
+    ``, `BASE PARA O SIMPLES NACIONAL: ${brl(r.liquida)}`, `(inclui o frete; descontos de cupom, Pix e promoções, cancelamentos, trocas e devoluções já descontados)`].join("\n");
 }
 async function csvContador(){
   const [de, ate] = faixaRecorte(), dentro = d => !!d && d >= de && d <= ate;
