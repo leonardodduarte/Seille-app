@@ -1170,7 +1170,7 @@ function vPedidos(){
   const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
   const cups = [...new Set(todos.map(v => v.cupom).filter(Boolean))].sort();
   const agrupa = key => { const m = {}; at.forEach(g => { const k = g.f[key] || ""; (m[k] ||= {n:0, receita:0, desconto:0, frete:0}); m[k].n++; m[k].receita += g.total; m[k].desconto += g.desconto; m[k].frete += g.frete; }); return Object.entries(m).sort((a,b)=>b[1].receita-a[1].receita); };
-  const pUF = agrupa("estado"), pCup = agrupa("cupom");
+  const pCup = agrupa("cupom");
   const nPed = at.length, soma = fn => at.reduce((a,g)=>a+fn(g),0);
   const tr = soma(g=>g.total), tliq = soma(g=>g.liquido), tl = soma(g=>g.sobra), totFrete = soma(g=>g.frete), comCupom = at.filter(g=>g.f.cupom).length;
   const algumEst = at.some(g => !g.real);
@@ -1204,16 +1204,10 @@ function vPedidos(){
     <div class="kpi"><span class="l">Frete cobrado</span><span class="v num">${brl(totFrete)}</span><span class="s">média ${brl(totFrete/nPed)} por pedido</span></div>
     <div class="kpi"><span class="l">Taxas e juros</span><span class="v num">${brl(tr - tliq)}</span><span class="s">${algumEst ? "parte estimada" : "valores da loja"} · ${tr ? pct((tr-tliq)/tr) : "—"} do total</span></div>
   </div>
-  <div class="grid2">
-    <div class="panel"><h3>Por estado</h3><div class="tw"><table>
-      <thead><tr><th>Estado</th><th class="n">Pedidos</th><th class="n">Faturamento</th><th class="n">Frete</th></tr></thead>
-      <tbody>${pUF.map(([k,o]) => `<tr><td>${esc(k || "Não informado")}</td><td class="n">${o.n}</td><td class="n">${brl(o.receita)}</td><td class="n">${brl(o.frete)}</td></tr>`).join("")}</tbody>
-    </table></div></div>
-    <div class="panel"><h3>Cupons</h3><div class="tw"><table>
+  <div class="panel"><h3>Cupons</h3><div class="tw"><table>
       <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n">Desconto dado</th><th class="n">Faturamento</th></tr></thead>
       <tbody>${pCup.map(([k,o]) => `<tr><td>${k ? esc(k) : `<span class="sub">Sem cupom</span>`}</td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.receita)}</td></tr>`).join("")}</tbody>
-    </table></div></div>
-  </div>` : ""}
+    </table></div></div>` : ""}
   <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros. Sobra = líquido − custo das peças − frete pago − impostos. ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
 }
 
@@ -1408,12 +1402,12 @@ function vCustos(){
     <div class="kpi"><span class="l">Lançamento de coleções</span><span class="v num">${brl(c.colecao)}</span></div>
     <div class="kpi kclick" data-taxfrete role="button" tabindex="0"><span class="l">Taxas e fretes <span aria-hidden="true">›</span></span><span class="v num">${brl(c.gateway+c.frete)}</span><span class="s">Frete pago, taxas e juros dos pedidos · toque para ver por pedido</span></div>
   </div>
-  <div class="panel"><h3>Mapa de custos do mês</h3><div class="tw"><table>
+  ${dobra("mapa", "Mapa de custos do mês", brl(total), `<div class="tw"><table>
     <thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">% do faturamento</th><th></th></tr></thead>
     <tbody>${mapa}</tbody>
     <tfoot><tr><td>Total de custos operacionais</td><td class="n">${brl(total)}</td><td class="n">${c.receita?pct(total/c.receita):""}</td><td></td></tr></tfoot>
   </table></div>
-  <p class="sub" style="margin:10px 0 0">Aluguel, condomínio, contas e contador costumam ser lançados como custo fixo (repete todo mês). IPTU e seguro podem ser lançados como fixo, com o valor da parcela, ou como custo do mês quando forem pagos à vista.</p></div>
+  <p class="sub" style="margin:10px 0 0">Aluguel, condomínio, contas e contador costumam ser lançados como custo fixo (repete todo mês). IPTU e seguro podem ser lançados como fixo, com o valor da parcela, ou como custo do mês quando forem pagos à vista.</p>`)}
   <div class="grid2">
     <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos fixos mensais</h3><button class="btn" data-new="fixos">Adicionar</button></div>
       <div class="tw"><table><thead><tr><th>Descrição</th><th>Vigência</th><th class="n">Valor</th></tr></thead><tbody>
