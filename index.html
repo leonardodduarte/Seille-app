@@ -931,11 +931,10 @@ function painelEstados(){
         <div class="sub">${o.n} ${o.n===1?"pedido":"pedidos"} · ticket médio ${brl(o.receita/o.n)} · ${cid.length} ${cid.length===1?"cidade":"cidades"}</div>
         ${aberto ? `<div><button class="btn" data-pedidosuf="${esc(uf)}" style="margin-top:6px">Ver pedidos ${uf ? "de " + esc(uf) : "sem estado"} ›</button></div><div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
       </div></div>`; }).join("");
-  return `<div class="panel" style="display:flex;flex-direction:column;gap:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos · ${esc(rotuloRecorte())}</h3></div>
+  return dobra("estados", `Onde mais vendemos · ${esc(rotuloRecorte())}`, lista.length ? `${lista.filter(([uf])=>uf).length} estados` : "", `<div style="display:flex;flex-direction:column;gap:14px">
     ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div>${lista.length > 5 ? `<button class="btn" data-regtodos style="align-self:center">${REGTODOS ? "Mostrar só os 5 primeiros ▴" : `Ver os outros ${lista.length - 5} estados ▾`}</button>` : ""}`
       : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
-  </div>`;
+  </div>`);
 }
 // Comparação com o mesmo período do ano anterior (até a mesma data, para não comparar mês incompleto com mês inteiro)
 const menosUmAno = d => { const y = +d.slice(0,4) - 1; const r = y + d.slice(4); return r.endsWith("-02-29") ? y + "-02-28" : r; };
@@ -1027,20 +1026,53 @@ function projecao(receita){
 // Clientes: quem mais comprou no período e quantas voltaram a comprar (contando todo o histórico)
 const chaveCli = v => semAc(v.cliente || "");
 let CLIORD = "valor"; // ordem da lista de clientes: "valor" (quem gastou mais) ou "pedidos" (quem fez mais pedidos)
-function painelClientes(c){
+function dadosClientes(vs){
   const hist = {}; agrupaPedidos(S.vendas.filter(ativa)).forEach(g => { const k = chaveCli(g.f); if(k) (hist[k] ||= []).push(g); });
-  const noPer = {}; agrupaPedidos(c.vs).forEach(g => { const k = chaveCli(g.f); if(!k) return; const o = (noPer[k] ||= {nome: g.f.cliente, n: 0, total: 0}); o.n++; o.total += g.total; });
-  const ks = Object.keys(noPer), voltaram = ks.filter(k => (hist[k]||[]).length >= 2).length;
+  const noPer = {}; agrupaPedidos(vs).forEach(g => { const k = chaveCli(g.f); if(!k) return; const o = (noPer[k] ||= {nome: g.f.cliente, n: 0, total: 0}); o.n++; o.total += g.total; });
   const nHist = k => (hist[k]||[]).length;
-  const top = Object.entries(noPer).sort(CLIORD === "pedidos"
-    ? (a,b) => b[1].n - a[1].n || nHist(b[0]) - nHist(a[0]) || b[1].total - a[1].total
-    : (a,b) => b[1].total - a[1].total).slice(0, 5);
-  const ord = [["valor","Valor"],["pedidos","Pedidos"]].map(([k,l]) => `<button class="${CLIORD===k?"on":""}" data-cliord="${k}">${l}</button>`).join("");
-  return `<div class="panel"><div class="head" style="margin-bottom:10px;align-items:center"><h3>Clientes</h3><div class="seg" role="group" aria-label="Ordenar clientes por">${ord}</div></div>
-    <p class="sub" style="margin:0 0 10px">${ks.length} ${ks.length===1?"cliente comprou":"clientes compraram"} · <b>${voltaram}</b> (${ks.length ? pct(voltaram/ks.length, 0) : "—"}) ${voltaram===1?"já comprou":"já compraram"} mais de uma vez na loja</p>
+  const lista = Object.entries(noPer).map(([k,o]) => ({...o, hist: nHist(k)})).sort(CLIORD === "pedidos"
+    ? (a,b) => b.n - a.n || b.hist - a.hist || b.total - a.total
+    : (a,b) => b.total - a.total);
+  return {lista, voltaram: lista.filter(o => o.hist >= 2).length};
+}
+const segCli = () => `<div class="seg" role="group" aria-label="Ordenar clientes por">${[["valor","Valor"],["pedidos","Pedidos"]].map(([k,l]) => `<button class="${CLIORD===k?"on":""}" data-cliord="${k}">${l}</button>`).join("")}</div>`;
+const linhaCli = (o, i) => `<tr class="click" data-cliente="${esc(o.nome)}" data-busca="${esc(semAc(o.nome))}"><td>${i != null ? `<span class="sub">${i+1}.</span> ` : ""}${esc(o.nome)} <span class="irseta">›</span>${o.hist >= 2 ? `<div class="sub">${o.hist} pedidos no total</div>` : ""}</td><td class="n">${o.n}</td><td class="n">${brl(o.total)}</td></tr>`;
+function painelClientes(c){
+  const {lista, voltaram} = dadosClientes(c.vs), n = lista.length, top = lista.slice(0, 5);
+  return dobra("clientes", "Clientes", `${n} ${n===1?"cliente":"clientes"}`, `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><p class="sub" style="margin:0;flex:1 1 200px">${n} ${n===1?"cliente comprou":"clientes compraram"} · <b>${voltaram}</b> (${n ? pct(voltaram/n, 0) : "—"}) ${voltaram===1?"já comprou":"já compraram"} mais de uma vez na loja</p>${segCli()}</div>
     <div class="tw"><table><thead><tr><th>Quem mais comprou</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead><tbody>
-    ${top.length ? top.map(([k,o]) => `<tr class="click" data-cliente="${esc(o.nome)}"><td>${esc(o.nome)} <span class="irseta">›</span>${(hist[k]||[]).length >= 2 ? `<div class="sub">${hist[k].length} pedidos no total</div>` : ""}</td><td class="n">${o.n}</td><td class="n">${brl(o.total)}</td></tr>`).join("") : emptyRow(3, "Sem vendas no período", "")}
-    </tbody></table></div></div>`;
+    ${top.length ? top.map(o => linhaCli(o)).join("") : emptyRow(3, "Sem vendas no período", "")}
+    </tbody></table></div>
+    ${n > top.length ? `<button class="btn" data-todosclientes style="margin-top:12px">Ver todos os ${n} clientes</button>` : ""}`);
+}
+let CLIQ = "";
+function openTodosClientes(){
+  const {lista, voltaram} = dadosClientes(S.vendas.filter(v => ativa(v) && noRecorte(v.data)));
+  const totP = lista.reduce((a,o)=>a+o.n,0), totV = lista.reduce((a,o)=>a+o.total,0);
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal largo">
+    <div><h2>Clientes · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${lista.length} clientes · ${voltaram} já compraram mais de uma vez · ${brl(totV)}</p></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input type="search" id="cliq" placeholder="Buscar cliente" value="${esc(CLIQ)}" style="flex:1 1 180px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px">${segCli()}</div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead>
+      <tbody id="clitb">${lista.map((o,i) => linhaCli(o, i)).join("") || emptyRow(3, "Sem vendas no período", "")}</tbody>
+      ${lista.length ? `<tfoot><tr><td>Total</td><td class="n">${intf(totP)}</td><td class="n">${brl(totV)}</td></tr></tfoot>` : ""}
+    </table></div>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+  const filtra = () => { const q = semAc($("#cliq", modalEl).value); CLIQ = $("#cliq", modalEl).value; modalEl.querySelectorAll("#clitb tr[data-busca]").forEach(tr => tr.hidden = !!q && !tr.dataset.busca.includes(q)); };
+  $("#cliq", modalEl).addEventListener("input", filtra); filtra();
+}
+// Blocos do Painel que abrem e fecham (como o Demonstrativo). Começam abertos; a escolha fica guardada neste aparelho.
+let FECHADOS = {}; try{ FECHADOS = JSON.parse(localStorage.getItem("painelFechados") || "{}") || {}; }catch(_){ FECHADOS = {}; }
+function dobra(id, titulo, resumo, corpo){
+  const aberto = !FECHADOS[id];
+  return `<details class="panel dreBox"${aberto ? " open" : ""}><summary data-dobra="${id}"><h3>${titulo}</h3><span class="sub">${resumo ? resumo + " · " : ""}${aberto ? "fechar ▴" : "abrir ▾"}</span></summary>${corpo}</details>`;
 }
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
@@ -1051,7 +1083,6 @@ function vPainel(){
   const vsAnt = (a, b) => cmp.temAnt ? `${cmp.varia(a, b)} vs. ${brl(b)} em ${cmp.rot}` : "";
   const proj = projecao(c.receita);
   const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, 5).map(t => [t.nome, t]);
-  const ch = chartLucro();
   const dreRow = (l, v, cls="", ir="") => `<tr class="${cls}${ir?" click":""}"${ir?` data-ir="${ir}"`:""}><td>${l}${ir?` <span class="irseta" aria-hidden="true">›</span>`:""}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
   const estim = (c.gwEstimado && c.vs.length) || !c.impostoReal || c.impostoMisto;
   return `
@@ -1072,10 +1103,6 @@ function vPainel(){
     <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
     ${cardCupons()}
   </div></details>
-  <div class="panel"><h3>Lucro · ${P ? "meses do período (mês inteiro)" : A ? "mês a mês em " + ano : "últimos 6 meses"}</h3>
-    <div class="chart" id="chart">${ch.svg}<div class="tip" id="tip" hidden></div></div>
-    <p class="sub" style="margin:8px 0 0">Toque nas barras para ver faturamento e custos do mês.</p>
-  </div>
   <details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
       <table class="dre"><tbody>
         ${dreRow("Faturamento", c.receita, "big", "pedidos")}
@@ -1097,12 +1124,11 @@ function vPainel(){
   </details>
   ${painelEstados()}
   <div class="grid2">
-    <div class="panel"><h3>Peças que mais venderam</h3>
+    ${dobra("pecas", "Peças que mais venderam", ranking.length ? `${ranking.length} peças` : "", `
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
       ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
-      ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}
-    </div>
+      ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}`)}
     ${painelClientes(c)}
   </div>`;
 }
@@ -2338,13 +2364,15 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
-  const cli = e.target.closest("[data-cliente]"); if(cli){ PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
+  const cli = e.target.closest("[data-cliente]"); if(cli){ closeModal(); PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
   const mi = e.target.closest("[data-maisind]"); if(mi){ e.preventDefault(); maisInd = !maisInd; render(); return; }
+  const db_ = e.target.closest("[data-dobra]"); if(db_){ e.preventDefault(); const k = db_.dataset.dobra; if(FECHADOS[k]) delete FECHADOS[k]; else FECHADOS[k] = true; try{ localStorage.setItem("painelFechados", JSON.stringify(FECHADOS)); }catch(_){} render(); return; }
+  if(e.target.closest("[data-todosclientes]")){ openTodosClientes(); return; }
   const dr = e.target.closest("[data-dre]"); if(dr){ e.preventDefault(); dreAberto = !dreAberto; render(); return; }
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
-  const cor = e.target.closest("[data-cliord]"); if(cor){ CLIORD = cor.dataset.cliord; render(); return; }
+  const cor = e.target.closest("[data-cliord]"); if(cor){ const noModal = !!cor.closest(".ov"); CLIORD = cor.dataset.cliord; render(); if(noModal) openTodosClientes(); return; }
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
   const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
   const pc = e.target.closest("[data-peca]"); if(pc){ abrirPeca(pc.dataset.peca); return; }
