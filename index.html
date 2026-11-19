@@ -2211,6 +2211,14 @@ function render(){
 
 // events
 document.addEventListener("click", e => {
+  // Tocar de novo na aba em que já está: volta para o início da página
+  const abaAtual = e.target.closest("#bnav a, #tabs a, #sheet a, a.logo");
+  if(abaAtual && abaAtual.hash.slice(1) === curView()){
+    e.preventDefault();
+    $("#sheet").hidden = true;
+    window.scrollTo({top: 0, behavior: "smooth"});
+    return;
+  }
   const n = e.target.closest("[data-new]"); if(n && !n.disabled){ openForm(n.dataset.new, null, n.dataset.cat ? {categoria:n.dataset.cat} : null); return; }
   if(e.target.closest("#mais")){ $("#sheet").hidden = false; return; }
   if(e.target.id === "sheet"){ $("#sheet").hidden = true; return; }
