@@ -192,6 +192,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         // "Em produção" é marcado no app enquanto o pedido ainda está por embalar; o resto segue a Nuvemshop
         status: statusLoja === "Recebido" && antes?.status === "Em produção" ? "Em produção" : statusLoja,
         criadoEm: antes?.criadoEm || new Date().toISOString(),
+        ...(antes?.tipo ? { tipo: antes.tipo } : {}), // troca / devolução marcada no app
       };
       if (taxasApi != null || jurosApi != null) {          // valores da loja
         novo.taxasPagas = i === 0 ? (taxasApi ?? 0) : 0; novo.jurosPagos = i === 0 ? (jurosApi ?? 0) : 0;

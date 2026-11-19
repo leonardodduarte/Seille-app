@@ -125,6 +125,7 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 @media (max-width:600px){.seg.modo{margin-left:0;flex:1 1 100%}.seg.modo button{flex:1}}
 .ptop .chips{min-width:0}
 .mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:600px){.mgrid{display:flex;overflow-x:auto;scrollbar-width:none;gap:6px;padding-bottom:2px}.mgrid::-webkit-scrollbar{display:none}.mgrid button{flex:0 0 64px;padding:8px 4px}}
 @media (min-width:900px){.mgrid{grid-template-columns:repeat(12,minmax(0,1fr))}}
 .mgrid button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:14px;padding:10px 4px;font-weight:600;font-size:15px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-variant-numeric:tabular-nums}
 .mgrid button small{color:var(--muted);font-weight:500;font-size:12px}
@@ -138,6 +139,12 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.kpis.kpis4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:860px){.kpis.kpis4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+details.maisind>summary{list-style:none;cursor:pointer;color:var(--ink2);font-weight:600;padding:2px 2px 10px}
+details.maisind>summary::-webkit-details-marker,details.dreBox>summary::-webkit-details-marker{display:none}
+details.dreBox>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+details.dreBox[open]>summary{margin-bottom:12px}
 .listatoggle{align-self:stretch;justify-content:center;display:flex}
 .cupbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .rapido{display:flex;flex-direction:column;gap:12px}
@@ -146,12 +153,15 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .rcard b{font-size:20px}
 .rcard span{color:var(--muted);font-size:14px}
 .rcard:hover{border-color:#BDBDBD}
-.rnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.rnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
 .rnums>div{padding:12px 14px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line);min-width:0}
 .rnums>div:first-child{border-left:0}
 .rnums span{font-size:12px;color:var(--muted)}
 .rnums b{font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (max-width:600px){.rnums{grid-template-columns:repeat(2,minmax(0,1fr))}.rnums>div:nth-child(3){border-left:0}.rnums>div:nth-child(n+3){border-top:1px solid var(--line)}}
+@media (max-width:600px){.rnums>div{padding:10px}.rnums b{font-size:16px}}
+.alerta{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;border-radius:14px;padding:12px 16px;background:var(--bad-soft);color:var(--bad);font:inherit;cursor:pointer}
+.alerta.leve{background:var(--raised);color:var(--ink)}
+.alerta span{white-space:nowrap;font-weight:600}
 .subtabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;border:1px solid var(--line);border-radius:16px;padding:5px;align-self:flex-start;max-width:100%}
 .subtabs::-webkit-scrollbar{display:none}
 .subtabs a{flex:none;padding:9px 14px;border-radius:11px;color:var(--muted);text-decoration:none;font-weight:600;font-size:15px;white-space:nowrap}
@@ -400,7 +410,7 @@ const CAT_GESTAO = "Gestão de tráfego"; // custo fixo da agência que faz a ge
 const CAT_AUTO = {"Funcionárias":"funcionarias", "Tráfego pago":"trafego", "Lançamento de coleções":"colecoes"};
 const CATS = GRUPOS.flatMap(g => g[1]).filter(c => !CAT_AUTO[c]);
 const CAT_FIXO = CATS, CAT_VAR = CATS;
-const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000};
+const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000, diasAlerta:7};
 const FUNCOES = ["Costureira","Modelista","Cortadeira","Auxiliar de produção","Passadeira / acabamento","Atendimento e expedição","Outra"];
 const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer"];
 const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
@@ -460,7 +470,11 @@ function resumoPed(k, ls){
     sobra: soma(v => vendaCalc(v).lucro), qtd: soma(v => num(v.qtd)), status: f.status || "Recebido", cancelado: ls.every(v => !ativa(v))};
 }
 function agrupaPedidos(vs){ const m = new Map(); vs.forEach(v => { const k = chavePed(v); if(!m.has(k)) m.set(k, []); m.get(k).push(v); }); return [...m.entries()].map(([k,ls]) => resumoPed(k, ls)); }
-const ativa = v => v.status !== "Cancelado";
+// Trocas e devoluções não contam como venda; o custo delas (frete e, na troca, a peça enviada) entra como despesa
+const ehTroca = v => v.tipo === "troca" || v.tipo === "devolucao";
+const ativa = v => v.status !== "Cancelado" && !ehTroca(v);
+const custoTroca = v => num(v.fretePago) + (v.tipo === "troca" ? num(v.custoUnit) * num(v.qtd) : 0);
+const trocasEntre = (de, ate) => S.vendas.filter(v => ehTroca(v) && v.status !== "Cancelado" && v.data >= de && v.data <= ate).reduce((a,v) => a + custoTroca(v), 0);
 const fixoNoMes = (f, ym) => (!f.inicio || f.inicio <= ym) && (!f.fim || f.fim >= ym);
 
 // Resultado de um período qualquer: vendas, anúncios e despesas pela data; custos fixos proporcionais aos dias;
@@ -502,17 +516,18 @@ function calcPeriodo(de, ate){
   const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
   const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
   const colecao = S.custosColecao.filter(x => dentro(x.data)).reduce((a,x)=>a+num(x.valor),0);
-  const lucro = mc - ads - avulsos - fixos - equipe - colecao, nPed = pedidos.size, mcPct = receita ? mc/receita : NaN;
+  const trocas = trocasEntre(de, ate);
+  const lucro = mc - ads - avulsos - fixos - equipe - colecao - trocas, nPed = pedidos.size, mcPct = receita ? mc/receita : NaN;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   return {ym: de + "_" + ate, vs, meses, receita, bruto, descontos, cpv, taxas, gateway: gw, gwEstimado: vs.some(v => !temTaxaReal(v)), imposto, impostoEst: receita*num(S.config.imposto)/100, impostoPago, impostoReal, impostoMisto: impostoReal && impostoEstMeses,
-    frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
+    frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, trocas, lucro, margem: receita ? lucro/receita : NaN, nPed, pecas, ticket: nPed ? receita/nPed : 0,
     roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN, equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN, dias: daysBetween(de, ate) + 1};
 }
 function calcAno(ano){
   // até o mês atual (meses que ainda não chegaram não entram nos custos fixos)
   const ms = Array.from({length:12}, (_,i) => ano + "-" + String(i+1).padStart(2,"0")).filter(ym => ym <= today().slice(0,7)).map(calcMes);
   const o = {ym: ano, vs: ms.flatMap(m => m.vs), meses: ms};
-  for(const k of ["receita","bruto","descontos","cpv","taxas","gateway","imposto","impostoEst","impostoPago","frete","mc","ads","gestao","avulsos","fixos","equipe","porPeca","colecao","lucro","pecas","nPed"]) o[k] = ms.reduce((a,m) => a + (+m[k] || 0), 0);
+  for(const k of ["receita","bruto","descontos","cpv","taxas","gateway","imposto","impostoEst","impostoPago","frete","mc","ads","gestao","avulsos","fixos","trocas","equipe","porPeca","colecao","lucro","pecas","nPed"]) o[k] = ms.reduce((a,m) => a + (+m[k] || 0), 0);
   o.gwEstimado = ms.some(m => m.gwEstimado && m.vs.length);
   o.impostoReal = ms.some(m => m.impostoReal); o.impostoMisto = o.impostoReal && ms.some(m => !m.impostoReal && m.vs.length);
   o.mcPct = o.receita ? o.mc/o.receita : NaN; o.margem = o.receita ? o.lucro/o.receita : NaN; o.ticket = o.nPed ? o.receita/o.nPed : 0;
@@ -540,11 +555,12 @@ function calcMes(ym){
   const porPeca = pags.filter(p => p.tipo === POR_PECA).reduce((a,p)=>a+num(p.valor),0);
   const equipe = pags.reduce((a,p)=>a+num(p.valor),0) - porPeca;
   const colecao = S.custosColecao.filter(x => (x.data||"").slice(0,7) === ym).reduce((a,x)=>a+num(x.valor),0);
-  const lucro = mc - ads - avulsos - fixos - equipe - colecao;
+  const trocas = trocasEntre(ym + "-01", ym + "-31");
+  const lucro = mc - ads - avulsos - fixos - equipe - colecao - trocas;
   const nPed = pedidos.size;
   const receitaAds = vs.filter(v => PLATAFORMAS.includes(v.origem)).reduce((a,v)=>a+vendaCalc(v).receita,0);
   const mcPct = receita ? mc/receita : NaN;
-  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, lucro, margem: receita ? lucro/receita : NaN,
+  return {ym, vs, receita, bruto, descontos, cpv, taxas, gateway, gwEstimado, imposto, impostoEst, impostoPago, impostoReal, frete, mc, mcPct, ads, gestao, avulsos, fixos, equipe, porPeca, colecao, trocas, lucro, margem: receita ? lucro/receita : NaN,
     nPed, pecas, ticket: nPed ? receita/nPed : 0, roas: ads ? (receitaAds || receita)/ads : NaN, roasGeral: !receitaAds, cac: nPed ? ads/nPed : NaN,
     equilibrio: mcPct > 0 ? (fixos + ads + avulsos + equipe + colecao)/mcPct : NaN};
 }
@@ -602,6 +618,8 @@ const SCHEMAS = {
   ], defaults:()=>({categoria:CAT_FIXO[0],inicio:MES})},
   variaveis: {title:"Custo do mês", fields:[
     {key:"data",label:"Data",type:"date",req:true},
+    {key:"pago",label:"Já foi pago",type:"checkbox",def:true},
+    {key:"vencimento",label:"Vencimento",type:"date",h:"Para contas ainda não pagas: aparece em Contas a pagar"},
     {key:"categoria",label:"Categoria",type:"select",opts:()=>CAT_VAR.map(o=>[o,o])},
     {key:"descricao",label:"Descrição",type:"text",req:true,wide:true},
     money("valor","Valor (R$)",{req:true}),
@@ -649,7 +667,8 @@ const SCHEMAS = {
     {key:"competencia",label:"Mês e ano de referência",type:"month",req:true,h:"Mês do faturamento a que o imposto se refere (competência)"},
     {key:"tipo",label:"Imposto",type:"select",opts:()=>TIPOS_IMP.map(o=>[o,o])},
     money("valor","Valor pago (R$)",{req:true,h:"Total da guia, com juros e multa se houver"}),
-    {key:"data",label:"Data do pagamento",type:"date"},
+    {key:"data",label:"Data do pagamento",type:"date",h:"Deixe vazio se ainda não foi pago"},
+    {key:"vencimento",label:"Vencimento",type:"date",h:"Aparece em Contas a pagar enquanto não houver data de pagamento"},
     {key:"obs",label:"Observação",type:"text",wide:true},
     {key:"anexos",label:"Guia e comprovante",type:"files",wide:true},
   ], defaults:()=>({competencia:MES,tipo:TIPOS_IMP[0],data:today()})},
@@ -782,7 +801,7 @@ function openForm(col, doc, preset){
 document.addEventListener("keydown", e => { if(e.key === "Escape"){ closeModal(); const sh = document.getElementById("sheet"); if(sh) sh.hidden = true; } });
 
 // ---------- views ----------
-const VIEWS = ["painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
+const VIEWS = ["contas","painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
 const curView = () => { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "painel"; };
 const docLinks = arr => (arr||[]).map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"comprovante")}</a>`).join("");
 const exBadge = d => d.exemplo ? `<span class="tag">exemplo</span>` : "";
@@ -820,10 +839,14 @@ function resumoRapido(){
   const faixa = {hoje:[t,t], ontem:[addDays(t,-1),addDays(t,-1)], semana:[addDays(t,-dow),t]}[RAPIDO];
   const gs = agrupaPedidos(S.vendas.filter(v => v.data >= faixa[0] && v.data <= faixa[1])).filter(g => !g.cancelado);
   const fat = gs.reduce((a,g)=>a+g.total,0);
-  let sess = 0, temSess = false; for(const m of S.metas) for(const [d,n] of Object.entries(m.sessoesDia||{})) if(d >= faixa[0] && d <= faixa[1]){ sess += num(n); temSess = true; }
+  const dAlerta = num(S.config.diasAlerta) || 7;
+  const atrasados = new Set(S.vendas.filter(v => PED_GRUPO.emb.includes(v.status || "Recebido") && v.data && v.data < addDays(t, -dAlerta)).map(chavePed)).size;
+  const cts = contasAPagar(), vencidas = cts.filter(x => x.venc && x.venc < t), semana = cts.filter(x => x.venc && x.venc >= t && x.venc <= addDays(t, 7));
   const card = (n, rot, ir) => `<button class="rcard" data-rapido="${ir}"><b>${n ? n + (n===1?" venda":" vendas") : "Sem vendas"}</b><span>${rot}</span></button>`;
   const abas = [["hoje","Hoje"],["ontem","Ontem"],["semana","Esta semana"]].map(([k,l]) => `<button class="${RAPIDO===k?"on":""}" data-rapidoper="${k}">${l}</button>`).join("");
   return `<div class="rapido">
+    ${atrasados ? `<button class="alerta" data-rapido="atraso"><b>${atrasados} ${atrasados===1?"pedido":"pedidos"} por embalar há mais de ${dAlerta} dias</b><span>Ver ›</span></button>` : ""}
+    ${vencidas.length || semana.length ? `<button class="alerta${vencidas.length ? "" : " leve"}" data-ir="contas"><b>${vencidas.length ? `${vencidas.length} ${vencidas.length===1?"conta vencida":"contas vencidas"} (${brl(vencidas.reduce((a,x)=>a+x.valor,0))})` : ""}${vencidas.length && semana.length ? " · " : ""}${semana.length ? `${semana.length} ${semana.length===1?"vence":"vencem"} em 7 dias (${brl(semana.reduce((a,x)=>a+x.valor,0))})` : ""}</b><span>Contas a pagar ›</span></button>` : ""}
     <div class="rcards">${card(emb, "Por embalar", "emb")}${card(env, "Por enviar", "env")}</div>
     ${conferindo ? `<p class="sub" style="margin:0"><span class="spin"></span>Conferindo os status com a Nuvemshop… pode levar alguns minutos.</p>` : `<p class="sub" style="margin:0">Os status seguem a Nuvemshop. <button class="lnk" data-conferir>Conferir agora</button></p>`}
     <div class="seg">${abas}</div>
@@ -831,7 +854,6 @@ function resumoRapido(){
       <div><span>Vendas</span><b>${gs.length}</b></div>
       <div><span>Faturamento</span><b>${brl(fat)}</b></div>
       <div><span>Ticket médio</span><b>${gs.length ? brl(fat/gs.length) : "—"}</b></div>
-      <div><span>Sessões</span><b>${temSess ? intf(sess) : "—"}</b></div>
     </div></div>`;
 }
 function saudacao(){
@@ -840,7 +862,7 @@ function saudacao(){
   const ano = MES.slice(0,4);
   const fin = new Set(S.vendas.filter(v => ["Enviado","Entregue"].includes(v.status) && (v.data||"").startsWith(ano)).map(v => v.pedido || v.id)).size;
   const docs = S.entrada.filter(x => x.status === "novo").length;
-  return `<div class="hero"><h1>Olá, ${esc(e)}!</h1><p>${emProd} ${emProd===1?"pedido":"pedidos"} em produção · ${fin} ${fin===1?"finalizado":"finalizados"} em ${ano}</p>${docs ? `<p><button class="btn" data-ir="leitor">${docs} ${docs===1?"documento chegou":"documentos chegaram"} por e-mail para conferir ›</button></p>` : ""}</div>${resumoRapido()}`;
+  return `<div class="hero"><h1>Olá, ${esc(e)}!</h1>${docs ? `<p><button class="btn" data-ir="leitor">${docs} ${docs===1?"documento chegou":"documentos chegaram"} por e-mail para conferir ›</button></p>` : ""}</div>${resumoRapido()}`;
 }
 // Pedidos que vieram da loja sem peça cadastrada: ao cadastrar a peça com o mesmo nome, liga e preenche o custo
 async function ligaVendas(id, p){
@@ -994,75 +1016,91 @@ function abrirPeca(nome){
   if(p){ location.hash = "#pecas"; setTimeout(() => openForm("produtos", p), 60); return; }
   PEDQ = nome; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos";
 }
+let maisInd = false, dreAberto = false;
+// Projeção: no ritmo atual, quanto o mês (ou o ano) fecha. Só para o mês/ano em andamento.
+function projecao(receita){
+  if(periodo() || !receita) return 0;
+  const t = today();
+  if(anoTodo()){ const a = MES.slice(0,4); if(a !== t.slice(0,4)) return 0; const dias = daysBetween(a + "-01-01", t) + 1, total = daysBetween(a + "-01-01", a + "-12-31") + 1; return receita / dias * total; }
+  if(MES !== t.slice(0,7)) return 0;
+  const dm = new Date(+MES.slice(0,4), +MES.slice(5,7), 0).getDate(), d = +t.slice(8,10);
+  return d >= dm ? 0 : receita / d * dm;
+}
+// Clientes: quem mais comprou no período e quantas voltaram a comprar (contando todo o histórico)
+const chaveCli = v => semAc(v.cliente || "");
+function painelClientes(c){
+  const hist = {}; agrupaPedidos(S.vendas.filter(ativa)).forEach(g => { const k = chaveCli(g.f); if(k) (hist[k] ||= []).push(g); });
+  const noPer = {}; agrupaPedidos(c.vs).forEach(g => { const k = chaveCli(g.f); if(!k) return; const o = (noPer[k] ||= {nome: g.f.cliente, n: 0, total: 0}); o.n++; o.total += g.total; });
+  const ks = Object.keys(noPer), voltaram = ks.filter(k => (hist[k]||[]).length >= 2).length;
+  const top = Object.entries(noPer).sort((a,b) => b[1].total - a[1].total).slice(0, 5);
+  return `<div class="panel"><h3>Clientes</h3>
+    <p class="sub" style="margin:0 0 10px">${ks.length} ${ks.length===1?"cliente comprou":"clientes compraram"} · <b>${voltaram}</b> (${ks.length ? pct(voltaram/ks.length, 0) : "—"}) ${voltaram===1?"já comprou":"já compraram"} mais de uma vez na loja</p>
+    <div class="tw"><table><thead><tr><th>Quem mais comprou</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead><tbody>
+    ${top.length ? top.map(([k,o]) => `<tr class="click" data-cliente="${esc(o.nome)}"><td>${esc(o.nome)} <span class="irseta">›</span>${(hist[k]||[]).length >= 2 ? `<div class="sub">${hist[k].length} pedidos no total</div>` : ""}</td><td class="n">${o.n}</td><td class="n">${brl(o.total)}</td></tr>`).join("") : emptyRow(3, "Sem vendas no período", "")}
+    </tbody></table></div></div>`;
+}
 function vPainel(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4);
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(ano) : calcMes(MES);
   const per = rotuloRecorte();
   const meta = metaRecorte(), metaPl = P || A ? S.metas.some(m => num(m.meta) > 0) : metaDaPlanilha(MES);
-  const sess = sessoesRecorte();
   const cmp = comparaAnoAnterior(), ca = cmp.atual, cp = cmp.ant;
   const vsAnt = (a, b) => cmp.temAnt ? `${cmp.varia(a, b)} vs. ${brl(b)} em ${cmp.rot}` : "";
-  const antigos = pedidosAntigosAbertos();
-  const fila = S.vendas.filter(v => ["Recebido","Em produção","Pronto"].includes(v.status) && (v.data||"") >= addDays(today(), -DIAS_FILA))
-    .map(v => { const p = S.produtos.find(p=>p.id===v.produtoId); const prazo = addDays(v.data||today(), num(p?.prazoDias ?? 10)); return {...v, prazo, faltam: daysBetween(today(), prazo)}; })
-    .sort((a,b)=>a.prazo.localeCompare(b.prazo));
-  const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, A || P ? 10 : 5).map(t => [t.nome, t]);
+  const proj = projecao(c.receita);
+  const ranking = rankingPecas(c.vs), topArr = ranking.slice(0, 5).map(t => [t.nome, t]);
   const ch = chartLucro();
-  const hasEx = COLS.some(c => S[c].some(d=>d.exemplo));
   const dreRow = (l, v, cls="", ir="") => `<tr class="${cls}${ir?" click":""}"${ir?` data-ir="${ir}"`:""}><td>${l}${ir?` <span class="irseta" aria-hidden="true">›</span>`:""}</td><td class="n">${brl(v)}</td><td class="n sub">${c.receita?pct(v/c.receita):""}</td></tr>`;
+  const estim = (c.gwEstimado && c.vs.length) || !c.impostoReal || c.impostoMisto;
   return `
-  ${hasEx ? `<div class="banner info">Os registros marcados como <b>exemplo</b> mostram como o app funciona. Quando for lançar os dados reais, apague todos em Ajustes.</div>` : ""}
   <div class="seclbl">Resultado de ${per}<span>${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span></div>
-  <div class="kpis">
+  <div class="kpis kpis4">
     <div class="kpi kclick" data-ir="pedidos"><span class="l">Faturamento ›</span><span class="v num">${brl(c.receita)}</span>
       <span class="s">${meta ? pct(c.receita/meta,0)+(P?" da meta proporcional de ":" da meta de ")+brlK(meta)+(metaPl?" (planilha)":"") : ""}</span>
       <span class="s cmp">${cmp.temAnt ? vsAnt(ca.receita, cp.receita) : `Sem vendas no app de ${cmp.rot} para comparar`}</span>
+      ${proj ? `<span class="s">projeção ${A ? "do ano" : "do mês"}: <b>${brl(proj)}</b>${meta ? " (" + pct(proj/meta,0) + " da meta)" : ""}</span>` : ""}
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
     <div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
-    <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
-    <div class="kpi kclick" data-ir="pedidos"><span class="l">Pedidos ›</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${sess ? `<span class="s">conversão ${pct(c.nPed/sess, 2)} · ${intf(sess)} sessões</span>` : ""}${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
+    <div class="kpi kclick" data-ir="pedidos"><span class="l">Pedidos ›</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
     <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+  </div>
+  <details class="maisind"${maisInd ? " open" : ""}><summary data-maisind>${maisInd ? "Menos indicadores ▴" : "Ver mais indicadores ▾"}</summary>
+  <div class="kpis kpis4">
+    <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
     <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
     ${cardCupons()}
+  </div></details>
+  <div class="panel"><h3>Lucro · ${P ? "meses do período (mês inteiro)" : A ? "mês a mês em " + ano : "últimos 6 meses"}</h3>
+    <div class="chart" id="chart">${ch.svg}<div class="tip" id="tip" hidden></div></div>
+    <p class="sub" style="margin:8px 0 0">Toque nas barras para ver faturamento e custos do mês.</p>
   </div>
-  ${painelEstados()}
-  <div class="grid2">
-    <div class="panel"><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3>
+  <details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
       <table class="dre"><tbody>
-        ${dreRow("Faturamento (peças + frete − descontos)", c.receita, "big", "pedidos")}
-        ${dreRow("Custo das peças (tecido, aviamentos, costura)", -c.cpv, "minus", "pecas")}
-        ${dreRow(`Taxas e juros do pagamento${c.gwEstimado && c.vs.length ? ` (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde falta o valor real)` : ""}`, -c.gateway, "minus", "taxfrete")}
-        ${dreRow(c.impostoMisto ? `Impostos (valor pago nos meses lançados em Impostos, estimativa nos outros)` : c.impostoReal ? `Impostos pagos (lançados em Impostos)` : `Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%, lance o valor real em Impostos)`, -c.imposto, "minus", "impostos")}
+        ${dreRow("Faturamento", c.receita, "big", "pedidos")}
+        ${dreRow("Custo das peças", -c.cpv, "minus", "pecas")}
+        ${dreRow(`Taxas e juros${c.gwEstimado && c.vs.length ? " ≈" : ""}`, -c.gateway, "minus", "taxfrete")}
+        ${dreRow(`Impostos${c.impostoReal && !c.impostoMisto ? "" : " ≈"}`, -c.imposto, "minus", "impostos")}
         ${dreRow("Frete pago", -c.frete, "minus", "taxfrete")}
         ${dreRow("Margem de contribuição", c.mc, "tot")}
-        ${dreRow("Tráfego pago (anúncios)", -c.ads, "minus", "trafego")}
-        ${c.gestao ? dreRow("Gestão de tráfego (agência)", -c.gestao, "minus", "trafego") : ""}
-        ${dreRow("Custos variáveis do mês (pilotos, fotos…)", -c.avulsos, "minus", "custos")}
-        ${dreRow("Funcionárias (salários, encargos, extras)", -c.equipe, "minus", "funcionarias")}
-        ${dreRow("Lançamento de coleções (fotos, modelos…)", -c.colecao, "minus", "colecoes")}
-        ${dreRow("Custos fixos (aluguel, contas, contador…)", -(c.fixos - (c.gestao||0)), "minus", "custos")}
-        ${dreRow("Lucro líquido", c.lucro, "tot big")}
+        ${dreRow("Anúncios", -c.ads, "minus", "trafego")}
+        ${c.gestao ? dreRow("Gestão de tráfego", -c.gestao, "minus", "trafego") : ""}
+        ${dreRow("Custos variáveis", -c.avulsos, "minus", "custos")}
+        ${dreRow("Funcionárias", -c.equipe, "minus", "funcionarias")}
+        ${dreRow("Coleções", -c.colecao, "minus", "colecoes")}
+        ${dreRow("Custos fixos", -(c.fixos - (c.gestao||0)), "minus", "custos")}
+        ${c.trocas ? dreRow("Trocas e devoluções", -c.trocas, "minus", "pedidos") : ""}
+        ${dreRow("Lucro", c.lucro, "tot big")}
       </tbody></table>
-    </div>
-    <div class="panel"><h3>Lucro líquido · ${P ? "meses do período (mês inteiro)" : A ? "mês a mês em " + ano : "últimos 6 meses"}</h3>
-      <div class="chart" id="chart">${ch.svg}<div class="tip" id="tip" hidden></div></div>
-      <p class="sub" style="margin:8px 0 0">Passe o mouse (ou toque) nas barras para ver faturamento e custos do mês.</p>
-    </div>
-  </div>
+      ${estim ? `<p class="sub" style="margin:8px 0 0">≈ valor estimado: taxas de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde a loja não informou e impostos de ${num(S.config.imposto).toLocaleString("pt-BR")}% nos meses sem guia lançada em Impostos.</p>` : ""}
+  </details>
+  ${painelEstados()}
   <div class="grid2">
-    <div class="panel"><h3>Fila de produção</h3>
-      ${fila.length ? `<div class="qlist">${fila.slice(0,8).map(v=>`<div class="qi click" data-ped="${esc(chavePed(v))}"><div class="grow"><div><b>${esc(v.produtoNome)}</b> ${v.tamanho?`<span class="sub">· ${esc(v.tamanho)}</span>`:""} ${num(v.qtd)>1?`<span class="sub">× ${num(v.qtd)}</span>`:""}${exBadge(v)}</div><div class="sub">${esc(v.cliente||"")} ${v.pedido?"· #"+esc(v.pedido):""} · prazo ${dBR(v.prazo)}</div></div>
-        ${statusPill(v.status)}<span class="pill ${v.faltam<0?"bad":v.faltam<=2?"warn":""}">${v.faltam<0?Math.abs(v.faltam)+"d atrasado":v.faltam===0?"vence hoje":v.faltam+"d"}</span></div>`).join("")}</div>
-        ${fila.length>8?`<p class="sub" style="margin:8px 0 0">+ ${fila.length-8} peças na fila. <button class="lnk" data-ir="pedidos-andamento">Ver todos os pedidos em andamento ›</button></p>`:""}`
-      : `<div class="empty"><b>Nenhuma peça em produção</b>Pedidos dos últimos ${DIAS_FILA} dias com status Recebido, Em produção ou Pronto aparecem aqui com o prazo de entrega.</div>`}
-      ${antigos.length ? `<div class="note" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"><span><b>${antigos.length} ${antigos.length===1?"peça":"peças"}</b> de pedidos com mais de ${DIAS_FILA} dias ainda ${antigos.length===1?"está":"estão"} como Recebido, Em produção ou Pronto. Provavelmente já foram entregues e não foram marcadas como enviadas na Nuvemshop. Elas não aparecem na fila.</span><div><button class="btn" data-marcaant>Marcar ${antigos.length===1?"como entregue":"todas como entregues"}</button></div></div>` : ""}
-    </div>
-    <div class="panel"><h3>Peças que mais venderam ${P ? "de " + per : A ? "em " + ano : "no mês"}</h3>
+    <div class="panel"><h3>Peças que mais venderam</h3>
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
       ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
       ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}
     </div>
+    ${painelClientes(c)}
   </div>`;
 }
 function bindChart(){
@@ -1084,7 +1122,8 @@ let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "", PEDLIM = 100;
 let pedMin = false; try{ pedMin = localStorage.getItem("seillePedMin") === "1"; }catch(_){}
 const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"], emb:["Recebido","Em produção"], env:["Pronto"]};
-const PED_ROTULO = {emb:"Por embalar", env:"Por enviar"};
+PED_GRUPO.atraso = PED_GRUPO.emb;
+const PED_ROTULO = {emb:"Por embalar", env:"Por enviar", atraso:"Por embalar há mais tempo"};
 function vPedidos(){
   // com busca (nº do pedido, cliente, peça ou cidade) procura em todos os anos e meses
   const buscaGeral = !!PEDQ.trim() || !!PED_ROTULO[PEDF]; // busca e "por embalar/enviar" olham todas as datas
@@ -1096,7 +1135,8 @@ function vPedidos(){
   const qNum = /^#?\d+$/.test(PEDQ.trim()) ? PEDQ.trim().replace("#","") : "";
   const casa = v => qNum ? String(v.pedido||"").startsWith(qNum) : semAc([v.cliente, v.produtoNome, v.pedido, v.cidade, v.cupom].join(" ")).includes(q);
   const filtro = g => (!q || g.ls.some(casa)) && (!PEDUF || (g.f.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !g.f.cupom : PEDCUP === "__com" ? !!g.f.cupom : (g.f.cupom||"") === PEDCUP));
-  const gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF))).filter(filtro);
+  let gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF))).filter(filtro);
+  if(PEDF === "atraso"){ const lim = addDays(today(), -(num(S.config.diasAlerta) || 7)); gs = gs.filter(g => (g.f.data||"") < lim).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"")); }
   const at = gs.filter(g => !g.cancelado);
   const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
   const cups = [...new Set(todos.map(v => v.cupom).filter(Boolean))].sort();
@@ -1122,7 +1162,7 @@ function vPedidos(){
       <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
       <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
       ${f.cidade||f.estado||f.cupom||f.canal ? `<span class="s3">${[[f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
-      <div class="orow"><select class="st${PED_GRUPO.and.includes(g.status)?" on":""}" data-statusped="${esc(g.k)}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===g.status?" selected":""}>${s}</option>`).join("")}</select>
+      <div class="orow"><span class="pill${PED_GRUPO.and.includes(g.status)?" acc":""}">${esc(g.status)}</span>${g.ls.some(ehTroca) ? `<span class="pill warn">${g.f.tipo === "troca" ? "troca" : "devolução"}</span>` : ""}
       <span class="val">${brl(g.total)}<div class="sub" style="font-weight:400;text-align:right">líquido ${g.real ? "" : "≈ "}${brl(g.liquido)}</div></span></div></div>
     <span class="chev">›</span></div>`; }).join("")}
     ${pedMin ? "" : "</div>"}
@@ -1244,6 +1284,7 @@ function openPedido(k){
       <div class="f"><label for="pd_ju">Juros (R$)</label><input id="pd_ju" name="juros" type="number" step="0.01" min="0" inputmode="decimal" value="${g.real ? val(g.juros) : ""}"><span class="h">Juros do parcelamento pagos pela Seille</span></div>
       <div class="f"><label for="pd_fp">Frete pago pela Seille (R$)</label><input id="pd_fp" name="fretePago" type="number" step="0.01" min="0" inputmode="decimal" value="${val(g.fretePago)}"></div>
       <div class="f"><label for="pd_st">Status</label><select id="pd_st" name="status">${STATUS.map(s=>`<option${s===g.status?" selected":""}>${s}</option>`).join("")}</select></div>
+      <div class="f"><label for="pd_tp">Tipo de pedido</label><select id="pd_tp" name="tipo"><option value="">Venda</option><option value="troca"${f.tipo==="troca"?" selected":""}>Troca</option><option value="devolucao"${f.tipo==="devolucao"?" selected":""}>Devolução</option></select><span class="h">Troca e devolução não contam como venda; o frete (e a peça enviada, na troca) entra como custo</span></div>
     </div>
     <p class="sub" style="margin:0">Toque numa peça para editar custo, tamanho ou ligá-la à ficha técnica. Deixe Taxas e Juros vazios para usar a estimativa.</p>
     <div class="err" id="ferr" hidden></div>
@@ -1263,6 +1304,7 @@ function openPedido(k){
     try{
       for(const [i, v] of g.ls.entries()){
         const body = {...v, status: form.status.value, fretePago: i === 0 ? num(form.fretePago.value) : 0}; delete body.id;
+        if(form.tipo.value) body.tipo = form.tipo.value; else delete body.tipo;
         if(manual){ body.taxasPagas = i === 0 ? num(tx) : 0; body.jurosPagos = i === 0 ? num(ju) : 0; body.taxaManual = true; }
         else { delete body.taxasPagas; delete body.jurosPagos; delete body.taxaManual; }
         await S.db.collection("vendas").doc(v.id).set(body);
@@ -1272,11 +1314,33 @@ function openPedido(k){
   });
 }
 
+// Tamanhos que mais saem (90 dias) e modelos sem venda há 30 dias (que venderam nos 12 meses anteriores)
+function painelGiro(){
+  const t = today(), d90 = addDays(t, -90), d30 = addDays(t, -30), d365 = addDays(t, -365);
+  const ORD = ["PP","P","M","G","GG","XG","U","UNICO"];
+  const tam = {}; S.vendas.filter(v => ativa(v) && v.data >= d90).forEach(v => { const k = (tamanhoDe(v) || "").toUpperCase().replace("ÚNICO","UNICO"); if(k) tam[k] = (tam[k]||0) + num(v.qtd); });
+  const totT = Object.values(tam).reduce((a,b)=>a+b,0);
+  const tams = Object.entries(tam).sort((a,b) => b[1]-a[1]).slice(0, 8);
+  const ult = {}, qAno = {}, nomes = {};
+  S.vendas.filter(v => ativa(v) && v.data >= d365).forEach(v => { const m = modeloDe(v); nomes[m.k] = m.nome; qAno[m.k] = (qAno[m.k]||0) + num(v.qtd); if(!ult[m.k] || v.data > ult[m.k]) ult[m.k] = v.data; });
+  const paradas = Object.keys(ult).filter(k => ult[k] < d30).sort((a,b) => qAno[b]-qAno[a]).slice(0, 10);
+  return `<div class="grid2">
+    <div class="panel"><h3>Tamanhos que mais saem <span class="sub">· últimos 90 dias</span></h3>
+      ${tams.length ? tams.map(([k,n]) => `<div class="ufl" style="margin:6px 0 2px"><b>${esc(k === "UNICO" ? "Único" : k)}</b><span>${n} ${n===1?"peça":"peças"} <span class="sub">· ${pct(n/totT,0)}</span></span></div><div class="meter"><i style="width:${n/tams[0][1]*100}%"></i></div>`).join("") : `<div class="empty"><b>Sem vendas nos últimos 90 dias</b></div>`}
+    </div>
+    <div class="panel"><h3>Sem venda há mais de 30 dias</h3>
+      <p class="sub" style="margin:0 0 8px">Modelos que venderam nos últimos 12 meses e pararam de sair.</p>
+      <div class="tw"><table><thead><tr><th>Modelo</th><th class="n">Última venda</th><th class="n">Vendidas em 12 meses</th></tr></thead><tbody>
+      ${paradas.length ? paradas.map(k => `<tr class="click" data-peca="${esc(nomes[k])}"><td>${esc(nomes[k])} <span class="irseta">›</span></td><td class="n">${dBR(ult[k])}</td><td class="n">${qAno[k]}</td></tr>`).join("") : emptyRow(3, "Nenhum modelo parado", "Todos os modelos vendidos no último ano saíram nos últimos 30 dias.")}
+      </tbody></table></div></div>
+  </div>`;
+}
 function vPecas(){
   const ps = S.produtos.slice().sort((a,b)=>(b.ativo?1:0)-(a.ativo?1:0) || (a.nome||"").localeCompare(b.nome||""));
   const alvo = num(S.config.margemAlvo)/100;
   return `<div class="head"><div><h2>Peças e ficha técnica</h2><p>O custo de cada modelo, do tecido à costura. A margem considera ${(num(S.config.taxaGateway)+num(S.config.imposto)).toLocaleString("pt-BR")}% de taxas e impostos; a meta de margem é ${num(S.config.margemAlvo)}%.</p></div>
     <button class="btn pri" data-new="produtos">Nova peça</button></div>
+  ${painelGiro()}
   <div class="panel"><div class="tw"><table>
     <thead><tr><th>Peça</th><th class="n">Tecido</th><th class="n">Costura</th><th class="n">Custo total</th><th class="n">Preço</th><th class="n">Markup</th><th class="n">Margem</th><th class="n">Preço p/ meta</th></tr></thead>
     <tbody>${ps.length ? ps.map(p=>{const c=pecaCalc(p); const ok = c.mcPct >= alvo; return `<tr class="click" data-edit="produtos" data-id="${p.id}">
@@ -1418,6 +1482,34 @@ function vImpostos(){
   </table></div></div>
   <p class="sub">Encargos de funcionárias (INSS, FGTS) continuam em Funcionárias, para não contar duas vezes.</p>`;
 }
+// ---------- contas a pagar: boletos, guias e custos lançados sem pagamento ----------
+function contasAPagar(){
+  const out = [];
+  S.variaveis.filter(x => x.pago === false && !naoConsiderar(x)).forEach(x => out.push({col:"variaveis", id:x.id, desc:x.descricao || x.categoria, cat:x.categoria, valor:num(x.valor), venc:x.vencimento || x.data, anexos:x.anexos}));
+  S.impostos.filter(x => !x.data).forEach(x => out.push({col:"impostos", id:x.id, desc:(x.tipo || "Imposto") + (x.competencia ? " · ref. " + ymShort(x.competencia) : ""), cat:"Impostos", valor:num(x.valor), venc:x.vencimento || "", anexos:x.anexos}));
+  S.fixos.forEach(f => Object.entries(f.comprovantes || {}).forEach(([ym, lista]) => lista.forEach((cv, i) => { if(cv.pago === false) out.push({col:"fixos", id:f.id, ym, i, desc:f.nome + " · " + ymShort(ym), cat:f.categoria, valor:num(cv.valor || f.valor), venc:cv.vencimento || cv.data, anexos:cv.id ? [cv] : []}); })));
+  return out.sort((a,b) => (a.venc || "9").localeCompare(b.venc || "9"));
+}
+async function marcarPago(btn){
+  const {col, id, ym, i} = btn.dataset; if(!S.db) return;
+  btn.disabled = true;
+  try{
+    if(col === "fixos"){ const f = S.fixos.find(x => x.id === id); const body = {...f}; delete body.id; const cp = {...body.comprovantes}; cp[ym] = cp[ym].map((cv, k) => k === +i ? {...cv, pago:true, data:today()} : cv); body.comprovantes = cp; await S.db.collection("fixos").doc(id).set(body); }
+    else { const x = S[col].find(y => y.id === id); const body = {...x}; delete body.id; if(col === "variaveis"){ body.pago = true; body.data = today(); } else body.data = today(); await S.db.collection(col).doc(id).set(body); }
+    toast("Marcado como pago");
+  }catch(e){ toast("Não foi possível marcar agora"); btn.disabled = false; }
+}
+function vContas(){
+  const t = today(), cs = contasAPagar();
+  const grupo = (titulo, lista) => lista.length ? `<div class="panel"><h3>${titulo} <span class="sub">· ${brl(lista.reduce((a,x)=>a+x.valor,0))}</span></h3><div class="tw"><table>
+    <thead><tr><th>Vencimento</th><th>Conta</th><th class="n">Valor</th><th></th></tr></thead>
+    <tbody>${lista.map(x => `<tr><td>${x.venc ? dBR(x.venc) : `<span class="sub">sem data</span>`}${x.venc && x.venc < t ? `<div><span class="pill bad">${daysBetween(x.venc, t)}d atrasada</span></div>` : ""}</td><td>${esc(x.desc)}<div class="sub">${esc(x.cat || "")}</div>${docLinks(x.anexos)}</td><td class="n">${brl(x.valor)}</td><td class="n"><button class="btn" data-pagar data-col="${x.col}" data-id="${esc(x.id)}"${x.ym ? ` data-ym="${x.ym}" data-i="${x.i}"` : ""}>Pago</button></td></tr>`).join("")}</tbody>
+  </table></div></div>` : "";
+  const venc = cs.filter(x => x.venc && x.venc < t), sem = cs.filter(x => x.venc && x.venc >= t && x.venc <= addDays(t, 7)), depois = cs.filter(x => !x.venc || x.venc > addDays(t, 7));
+  return `<div class="head"><div><h2>Contas a pagar</h2><p>Boletos e guias lançados como ainda não pagos (pela aba Documentos ou à mão em Custos e Impostos). Toque em <b>Pago</b> quando pagar: a conta sai daqui e fica registrada com a data de hoje.</p></div></div>
+  ${cs.length ? grupo("Vencidas", venc) + grupo("Vencem nos próximos 7 dias", sem) + grupo("Próximas", depois)
+    : `<div class="panel empty"><b>Nenhuma conta a pagar</b>Quando um boleto ou guia for lançado sem comprovante de pagamento, ele aparece aqui com o vencimento.</div>`}`;
+}
 function vTrafego(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4), rot = rotuloRecorte();
   const ts = S.trafego.filter(t => noRecorte(t.data)).sort((a,b)=>(b.data||"").localeCompare(a.data||""));
@@ -1542,20 +1634,23 @@ function painelNuvem(){
 }
 function vAjustes(){
   const k = S.config;
-  const nEx = COLS.reduce((a,c)=>a+S[c].filter(d=>d.exemplo).length,0);
   const f = (key,label,h,step="0.01") => `<div class="f"><label for="c_${key}">${label}</label><input id="c_${key}" name="${key}" type="number" step="${step}" min="0" value="${esc(k[key])}" inputmode="decimal"><span class="h">${h}</span></div>`;
-  return `<div class="head"><div><h2>Ajustes</h2><p>Valores usados em todos os cálculos de margem e lucro.</p></div></div>
+  return `<div class="head"><div><h2>Ajustes</h2></div></div>
+  <div class="seclbl">Valores<span>usados nos cálculos</span></div>
   <form class="panel" id="cfg" style="display:flex;flex-direction:column;gap:14px">
     <div class="fgrid">
       ${f("taxaGateway","Taxa do gateway / meio de pagamento (%)","Média cobrada por venda no cartão e Pix")}
       ${f("imposto","Impostos sobre a venda (%)","Ex.: alíquota do Simples Nacional")}
       ${f("margemAlvo","Meta de margem de contribuição (%)","Usada para sugerir o preço de cada peça","1")}
       ${f("metaFaturamento","Meta de faturamento mensal (R$)","Usada nos meses em que a planilha não tem a META","1")}
+      ${f("diasAlerta","Alerta de pedido parado (dias)","Pedidos por embalar há mais dias que isso aparecem em destaque no Painel","1")}
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
-  ${painelPlanilha()}
+  <div class="seclbl">Conexões<span>Nuvemshop e planilha</span></div>
   ${painelNuvem()}
+  ${painelPlanilha()}
+  <div class="seclbl">Conta e dados<span></span></div>
   <div class="panel" style="display:flex;flex-direction:column;gap:12px">
     <h3>Sua conta</h3>
     <p class="sub" style="margin:0">Conectado como ${esc(window.seilleAuth?.email || "")}.</p>
@@ -1566,10 +1661,6 @@ function vAjustes(){
     <p class="sub" style="margin:0">Baixe os pedidos de ${ymLabel(MES)} em CSV para abrir no Excel ou Google Planilhas.</p>
     <div><button class="btn" id="exp">Baixar pedidos do mês (.csv)</button></div>
   </div>
-  <div class="panel" style="display:flex;flex-direction:column;gap:12px">
-    <h3>Dados de exemplo</h3>
-    <p class="sub" style="margin:0">${nEx ? `Há ${nEx} registros de exemplo. Apague antes de começar a lançar os números reais da Seille.` : "Nenhum registro de exemplo. Tudo o que aparece no app foi lançado por vocês."}</p>
-    ${nEx?`<div><button class="btn danger" id="rmex">Apagar ${nEx} registros de exemplo</button></div>`:""}
   </div>`;
 }
 
@@ -2027,18 +2118,18 @@ async function confirmaLeitor(id, btn){
       await S.db.collection("custosColecao").add({...base, colecaoId:g.colecaoId, colecaoNome:cn, categoria:g.categoriaColecao, fornecedor:g.favorecido, data:g.data, descricao:g.descricao, valor:g.valor, pago:g.pago, anexos});
       it.msg = `${brl(g.valor)} lançado na coleção ${cn} (${g.categoriaColecao}).`;
     } else if(g.destino === "variavel"){
-      await S.db.collection("variaveis").add({...base, data:g.data, categoria:g.categoria, descricao:g.descricao || g.tipoDocumento, valor:g.valor, anexos});
+      await S.db.collection("variaveis").add({...base, data:g.data, categoria:g.categoria, descricao:g.descricao || g.tipoDocumento, valor:g.valor, anexos, pago:g.pago, vencimento:g.pago ? "" : g.data});
       it.msg = `${brl(g.valor)} lançado em Custos do mês (${g.categoria}).`;
     } else if(g.destino === "fixo"){
       const fx = S.fixos.find(f=>f.id===g.fixoId); const body = {...fx}; delete body.id;
-      const cp = {...(fx.comprovantes||{})}; cp[comp] = [...(cp[comp]||[]), ...anexos.map(a=>({...a, valor:g.valor, data:g.data}))];
+      const cp = {...(fx.comprovantes||{})}; cp[comp] = [...(cp[comp]||[]), ...(anexos.length ? anexos : [{id:"", nome:g.descricao || "comprovante"}]).map(a=>({...a, valor:g.valor, data:g.data, pago:g.pago, vencimento:g.pago ? "" : g.data}))];
       body.comprovantes = cp; await S.db.collection("fixos").doc(fx.id).set(body);
       it.msg = `Comprovante de ${ymShort(comp)} anexado ao custo fixo "${fx.nome}".${Math.abs(num(fx.valor)-g.valor) > 0.01 ? ` O valor pago (${brl(g.valor)}) difere do cadastrado (${brl(fx.valor)}); ajuste o custo fixo se o valor mudou.` : ""}`;
     } else if(g.destino === "trafego"){
       await S.db.collection("trafego").add({...base, data:g.data, plataforma:g.plataforma, campanha:g.descricao, investimento:g.valor, impressoes:null, cliques:null, anexos});
       it.msg = `${brl(g.valor)} lançado em Tráfego pago (${g.plataforma}).`;
     } else if(g.destino === "imposto"){
-      await S.db.collection("impostos").add({...base, competencia:comp, tipo:g.tipoImposto, valor:g.valor, data:g.pago ? g.data : "", obs:g.descricao, anexos});
+      await S.db.collection("impostos").add({...base, competencia:comp, tipo:g.tipoImposto, valor:g.valor, data:g.pago ? g.data : "", vencimento:g.pago ? "" : g.data, obs:g.descricao, anexos});
       it.msg = `${brl(g.valor)} de ${g.tipoImposto} lançado em Impostos (referência ${ymShort(comp)}).`;
     }
     if(!S.assets) it.msg += " O arquivo não foi guardado.";
@@ -2164,7 +2255,7 @@ function vColecoes(){
   ${cols.length ? `<div class="cgrid">${cards}</div>${det}` : `<div class="panel empty"><b>Nenhuma coleção cadastrada</b>Crie a primeira coleção para planejar o orçamento do lançamento e lançar os custos do ensaio.</div>`}
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }
-const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, ajustes:vAjustes};
+const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, contas:vContas, ajustes:vAjustes};
 // Cadastros iniciais (uma vez só) de custos fixos combinados com a Seille.
 // Código fixo para nunca duplicar, e marcação no config para não recriar se for apagado depois.
 const CADASTROS_INICIAIS = [
@@ -2183,7 +2274,7 @@ async function semearGestao(){
     if(feitos.length){ await S.db.doc("config/geral").set({...S.config, ...marcas}); toast("Custo fixo cadastrado: " + feitos.join(" e ")); }
   }catch(e){ console.error("cadastro inicial", e); } // tenta de novo só na próxima abertura do app
 }
-const GRUPO_CUSTOS = [["custos","Visão geral"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["colecoes","Coleções"]];
+const GRUPO_CUSTOS = [["custos","Visão geral"],["contas","Contas a pagar"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["colecoes","Coleções"]];
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
@@ -2205,6 +2296,7 @@ function render(){
   const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + sub + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
   if(v === "painel") bindChart();
+  const mOn = $("#main .mgrid .on"); if(mOn){ const g = mOn.parentElement; if(g.scrollWidth > g.clientWidth) g.scrollLeft = mOn.offsetLeft - g.clientWidth/2 + mOn.clientWidth/2; }
 
   if(v === "ajustes") bindAjustes();
 }
@@ -2235,6 +2327,10 @@ document.addEventListener("click", e => {
   const cpi = e.target.closest("[data-cupir]"); if(cpi){ closeModal(); PEDCUP = cpi.dataset.cupir; PEDQ = ""; PEDUF = ""; PEDF = "todos"; PEDLIM = 100; if(location.hash === "#pedidos") render(); else location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
+  const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
+  const cli = e.target.closest("[data-cliente]"); if(cli){ PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
+  const mi = e.target.closest("[data-maisind]"); if(mi){ e.preventDefault(); maisInd = !maisInd; render(); return; }
+  const dr = e.target.closest("[data-dre]"); if(dr){ e.preventDefault(); dreAberto = !dreAberto; render(); return; }
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
