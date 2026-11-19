@@ -138,6 +138,7 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.listatoggle{align-self:stretch;justify-content:center;display:flex}
 .cupbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .rapido{display:flex;flex-direction:column;gap:12px}
 .rcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -1078,6 +1079,8 @@ function bindChart(){
 }
 
 let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "", PEDLIM = 100;
+// lista de pedidos minimizada (lembra a escolha neste aparelho)
+let pedMin = false; try{ pedMin = localStorage.getItem("seillePedMin") === "1"; }catch(_){}
 const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"], emb:["Recebido","Em produção"], env:["Pronto"]};
 const PED_ROTULO = {emb:"Por embalar", env:"Por enviar"};
@@ -1111,7 +1114,8 @@ function vPedidos(){
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
   </div>
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
-  ${gs.length ? `<div class="olist">${gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
+  ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
+  ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     <div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
       <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
@@ -1119,8 +1123,9 @@ function vPedidos(){
       ${f.cidade||f.estado||f.cupom||f.canal ? `<span class="s3">${[[f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
       <div class="orow"><select class="st${PED_GRUPO.and.includes(g.status)?" on":""}" data-statusped="${esc(g.k)}" aria-label="Status do pedido">${STATUS.map(s=>`<option${s===g.status?" selected":""}>${s}</option>`).join("")}</select>
       <span class="val">${brl(g.total)}<div class="sub" style="font-weight:400;text-align:right">líquido ${g.real ? "" : "≈ "}${brl(g.liquido)}</div></span></div></div>
-    <span class="chev">›</span></div>`; }).join("")}</div>
-    ${gs.length > PEDLIM ? `<button class="btn" data-pedmais style="align-self:center">Mostrar mais pedidos (${gs.length - PEDLIM} restantes)</button>` : ""}
+    <span class="chev">›</span></div>`; }).join("")}
+    ${pedMin ? "" : "</div>"}
+    ${!pedMin && gs.length > PEDLIM ? `<button class="btn" data-pedmais style="align-self:center">Mostrar mais pedidos (${gs.length - PEDLIM} restantes)</button>` : ""}
     <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)} · sobra ${brl(tl)}</span></span></div>`
     : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Os pedidos pagos da loja Nuvemshop aparecem aqui automaticamente."}</div>`}
   ${nPed ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
@@ -2228,6 +2233,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-conferir]")){ conferirAbertos(true); return; }
   const cpi = e.target.closest("[data-cupir]"); if(cpi){ closeModal(); PEDCUP = cpi.dataset.cupir; PEDQ = ""; PEDUF = ""; PEDF = "todos"; PEDLIM = 100; if(location.hash === "#pedidos") render(); else location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
+  if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
