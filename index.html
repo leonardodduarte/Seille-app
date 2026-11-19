@@ -493,6 +493,7 @@ function metaRecorte(){
   return metaDe(MES);
 }
 // Sessões do site no recorte (da planilha)
+function sessoesEntre(de, ate){ let n = 0, tem = false; for(const m of S.metas) for(const [d, v] of Object.entries(m.sessoesDia || {})) if(d >= de && d <= ate){ n += num(v); tem = true; } return tem ? n : null; }
 function sessoesRecorte(){ let n = 0, tem = false; for(const m of S.metas) for(const [d, v] of Object.entries(m.sessoesDia || {})) if(noRecorte(d)){ n += num(v); tem = true; } return tem ? n : null; }
 function calcPeriodo(de, ate){
   const dentro = d => !!d && d >= de && d <= ate;
@@ -1111,6 +1112,7 @@ function vPainel(){
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
     <div class="kpi kclick" data-ir="pedidos"><span class="l">Pedidos ›</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
     ${cardCupons()}
+    ${cardConversao(c, cmp)}
   </div>
   <details class="maisind"${maisInd ? " open" : ""}><summary data-maisind>${maisInd ? "Menos indicadores ▴" : "Ver mais indicadores ▾"}</summary>
   <div class="kpis kpis4">
@@ -1235,6 +1237,16 @@ function dadosCupons(){
   const soma = (l, f) => l.reduce((a,g) => a + f(g), 0);
   return {gs, com, sem, lista: Object.entries(m).sort((a,b) => b[1].n - a[1].n || b[1].total - a[1].total),
     desc: soma(com, g => g.desconto), fatCom: soma(com, g => g.total), fatSem: soma(sem, g => g.total)};
+}
+// Conversão do site: pedidos ÷ visitas (sessões vêm da planilha), comparada com o mesmo período do ano anterior
+function cardConversao(c, cmp){
+  const sess = sessoesRecorte();
+  if(!sess) return `<div class="kpi kclick" data-ir="ajustes"><span class="l">Conversão do site ›</span><span class="v num">—</span><span class="s">Sem visitas do site na planilha para este período</span></div>`;
+  const conv = c.nPed / sess, sa = sessoesEntre(cmp.RA.de, cmp.RA.ate), ca = sa ? cmp.ant.nPed / sa : null;
+  const sr = sessoesEntre(cmp.R.de, cmp.R.ate), convR = sr ? cmp.atual.nPed / sr : null; // mesmas datas dos dois anos
+  const pp = ca != null && convR != null ? (convR - ca) * 100 : null;
+  const varpp = pp == null ? "" : `<span class="var ${pp >= 0 ? "up" : "down"}">${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})} p.p.</span> vs. ${pct(ca, 2)} em ${cmp.rot}`;
+  return `<div class="kpi"><span class="l">Conversão do site</span><span class="v num">${pct(conv, 2)}</span><span class="s">${intf(sess)} visitas · ${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span>${varpp ? `<span class="s cmp">${varpp}</span>` : `<span class="s cmp">Sem visitas de ${cmp.rot} na planilha para comparar</span>`}</div>`;
 }
 function cardCupons(){
   const d = dadosCupons(), n = d.gs.length;
