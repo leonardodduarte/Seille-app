@@ -840,13 +840,10 @@ function resumoRapido(){
   const faixa = {hoje:[t,t], ontem:[addDays(t,-1),addDays(t,-1)], semana:[addDays(t,-dow),t]}[RAPIDO];
   const gs = agrupaPedidos(S.vendas.filter(v => v.data >= faixa[0] && v.data <= faixa[1])).filter(g => !g.cancelado);
   const fat = gs.reduce((a,g)=>a+g.total,0);
-  const dAlerta = num(S.config.diasAlerta) || 7;
-  const atrasados = new Set(S.vendas.filter(v => PED_GRUPO.emb.includes(v.status || "Recebido") && v.data && v.data < addDays(t, -dAlerta)).map(chavePed)).size;
   const cts = contasAPagar(), vencidas = cts.filter(x => x.venc && x.venc < t), semana = cts.filter(x => x.venc && x.venc >= t && x.venc <= addDays(t, 7));
   const card = (n, rot, ir) => `<button class="rcard" data-rapido="${ir}"><b>${n ? n + (n===1?" venda":" vendas") : "Sem vendas"}</b><span>${rot}</span></button>`;
   const abas = [["hoje","Hoje"],["ontem","Ontem"],["semana","Esta semana"]].map(([k,l]) => `<button class="${RAPIDO===k?"on":""}" data-rapidoper="${k}">${l}</button>`).join("");
   return `<div class="rapido">
-    ${atrasados ? `<button class="alerta" data-rapido="atraso"><b>${atrasados} ${atrasados===1?"pedido":"pedidos"} por embalar há mais de ${dAlerta} dias</b><span>Ver ›</span></button>` : ""}
     ${vencidas.length || semana.length ? `<button class="alerta${vencidas.length ? "" : " leve"}" data-ir="contas"><b>${vencidas.length ? `${vencidas.length} ${vencidas.length===1?"conta vencida":"contas vencidas"} (${brl(vencidas.reduce((a,x)=>a+x.valor,0))})` : ""}${vencidas.length && semana.length ? " · " : ""}${semana.length ? `${semana.length} ${semana.length===1?"vence":"vencem"} em 7 dias (${brl(semana.reduce((a,x)=>a+x.valor,0))})` : ""}</b><span>Contas a pagar ›</span></button>` : ""}
     <div class="rcards">${card(emb, "Por embalar", "emb")}${card(env, "Por enviar", "env")}</div>
     ${conferindo ? `<p class="sub" style="margin:0"><span class="spin"></span>Conferindo os status com a Nuvemshop… pode levar alguns minutos.</p>` : `<p class="sub" style="margin:0">Os status seguem a Nuvemshop. <button class="lnk" data-conferir>Conferir agora</button></p>`}
@@ -1029,12 +1026,17 @@ function projecao(receita){
 }
 // Clientes: quem mais comprou no período e quantas voltaram a comprar (contando todo o histórico)
 const chaveCli = v => semAc(v.cliente || "");
+let CLIORD = "valor"; // ordem da lista de clientes: "valor" (quem gastou mais) ou "pedidos" (quem fez mais pedidos)
 function painelClientes(c){
   const hist = {}; agrupaPedidos(S.vendas.filter(ativa)).forEach(g => { const k = chaveCli(g.f); if(k) (hist[k] ||= []).push(g); });
   const noPer = {}; agrupaPedidos(c.vs).forEach(g => { const k = chaveCli(g.f); if(!k) return; const o = (noPer[k] ||= {nome: g.f.cliente, n: 0, total: 0}); o.n++; o.total += g.total; });
   const ks = Object.keys(noPer), voltaram = ks.filter(k => (hist[k]||[]).length >= 2).length;
-  const top = Object.entries(noPer).sort((a,b) => b[1].total - a[1].total).slice(0, 5);
-  return `<div class="panel"><h3>Clientes</h3>
+  const nHist = k => (hist[k]||[]).length;
+  const top = Object.entries(noPer).sort(CLIORD === "pedidos"
+    ? (a,b) => b[1].n - a[1].n || nHist(b[0]) - nHist(a[0]) || b[1].total - a[1].total
+    : (a,b) => b[1].total - a[1].total).slice(0, 5);
+  const ord = [["valor","Valor"],["pedidos","Pedidos"]].map(([k,l]) => `<button class="${CLIORD===k?"on":""}" data-cliord="${k}">${l}</button>`).join("");
+  return `<div class="panel"><div class="head" style="margin-bottom:10px;align-items:center"><h3>Clientes</h3><div class="seg" role="group" aria-label="Ordenar clientes por">${ord}</div></div>
     <p class="sub" style="margin:0 0 10px">${ks.length} ${ks.length===1?"cliente comprou":"clientes compraram"} · <b>${voltaram}</b> (${ks.length ? pct(voltaram/ks.length, 0) : "—"}) ${voltaram===1?"já comprou":"já compraram"} mais de uma vez na loja</p>
     <div class="tw"><table><thead><tr><th>Quem mais comprou</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead><tbody>
     ${top.length ? top.map(([k,o]) => `<tr class="click" data-cliente="${esc(o.nome)}"><td>${esc(o.nome)} <span class="irseta">›</span>${(hist[k]||[]).length >= 2 ? `<div class="sub">${hist[k].length} pedidos no total</div>` : ""}</td><td class="n">${o.n}</td><td class="n">${brl(o.total)}</td></tr>`).join("") : emptyRow(3, "Sem vendas no período", "")}
@@ -1644,7 +1646,6 @@ function vAjustes(){
       ${f("imposto","Impostos sobre a venda (%)","Ex.: alíquota do Simples Nacional")}
       ${f("margemAlvo","Meta de margem de contribuição (%)","Usada para sugerir o preço de cada peça","1")}
       ${f("metaFaturamento","Meta de faturamento mensal (R$)","Usada nos meses em que a planilha não tem a META","1")}
-      ${f("diasAlerta","Alerta de pedido parado (dias)","Pedidos por embalar há mais dias que isso aparecem em destaque no Painel","1")}
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
@@ -2343,6 +2344,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
+  const cor = e.target.closest("[data-cliord]"); if(cor){ CLIORD = cor.dataset.cliord; render(); return; }
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
   const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
   const pc = e.target.closest("[data-peca]"); if(pc){ abrirPeca(pc.dataset.peca); return; }
