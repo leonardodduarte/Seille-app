@@ -414,7 +414,8 @@ const CAT_GESTAO = "Gestão de tráfego"; // custo fixo da agência que faz a ge
 const CAT_AUTO = {"Funcionárias":"funcionarias", "Tráfego pago":"trafego", "Lançamento de coleções":"colecoes"};
 const CATS = GRUPOS.flatMap(g => g[1]).filter(c => !CAT_AUTO[c]);
 const CAT_FIXO = CATS, CAT_VAR = CATS;
-const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000, diasAlerta:7};
+const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000, diasAlerta:7, taxaPix:0.99, taxaCartao:3.93, juros1x:0, juros2x:2.5, juros3x:6.25, juros4x:6.67, juros5x:7.08, juros6x:7.5, juros7x:7.5, juros8x:7.5, juros9x:7.5, juros10x:7.5, juros11x:7.5, juros12x:7.5};
+const JUROS_CONFIRMADOS = [1,2,3,6]; // vistos em pedidos reais; os outros são aproximados até a Seille conferir na tabela do Nuvem Pago
 const FUNCOES = ["Costureira","Modelista","Cortadeira","Auxiliar de produção","Passadeira / acabamento","Atendimento e expedição","Outra"];
 const VINCULOS = ["CLT","MEI / PJ","Por peça (facção)","Diarista","Freelancer"];
 const TIPOS_PAG = ["Salário","Adiantamento / vale","Produção por peça","Hora extra","Diária","13º salário","Férias","Rescisão","INSS / FGTS / encargos","Vale-transporte","Bônus / comissão","Outros"];
@@ -451,7 +452,14 @@ function pecaCalc(p){
 }
 // Taxas e juros do pagamento: valor real do pedido quando conhecido; senão, estimativa da taxa do gateway
 const temTaxaReal = v => v.taxasPagas != null || v.jurosPagos != null;
-const feeGw = (v, receita) => temTaxaReal(v) ? num(v.taxasPagas) + num(v.jurosPagos) : receita*num(S.config.taxaGateway)/100;
+// Tabela do Nuvem Pago (Ajustes): % de taxa e de juros conforme a forma de pagamento e as parcelas
+function tabelaTaxa(v){
+  const forma = String(v.formaPagamento || ""), parc = Math.min(12, Math.max(1, Math.round(num(v.parcelas)) || 1));
+  if(/pix/i.test(forma)) return {taxa: num(S.config.taxaPix), juros: 0, tabela: true};
+  if(/cr[eé]dito/i.test(forma) || num(v.parcelas) > 1) return {taxa: num(S.config.taxaCartao), juros: num(S.config["juros" + parc + "x"]), tabela: true};
+  return {taxa: num(S.config.taxaGateway), juros: 0, tabela: false};
+}
+const feeGw = (v, receita) => { if(temTaxaReal(v)) return num(v.taxasPagas) + num(v.jurosPagos); const t = tabelaTaxa(v); return receita * (t.taxa + t.juros) / 100; };
 function vendaCalc(v){
   const receita = num(v.precoUnit)*num(v.qtd) - num(v.desconto) + num(v.freteCobrado);
   const cpv = num(v.custoUnit)*num(v.qtd);
@@ -468,8 +476,9 @@ function resumoPed(k, ls){
   const f = ls[0], soma = fn => ls.reduce((a,v) => a + fn(v), 0);
   const pecas = soma(v => num(v.precoUnit)*num(v.qtd)), desconto = soma(v => num(v.desconto)), frete = soma(v => num(v.freteCobrado));
   const total = pecas - desconto + frete, real = ls.some(temTaxaReal);
-  const taxas = real ? soma(v => num(v.taxasPagas)) : total*num(S.config.taxaGateway)/100, juros = real ? soma(v => num(v.jurosPagos)) : 0;
-  return {k, ls, f, pecas, desconto, frete, total, real, taxas, juros, liquido: total - taxas - juros,
+  const tb = tabelaTaxa(f), porTabela = !real && tb.tabela;
+  const taxas = real ? soma(v => num(v.taxasPagas)) : total*tb.taxa/100, juros = real ? soma(v => num(v.jurosPagos)) : total*tb.juros/100;
+  return {k, ls, f, pecas, desconto, frete, total, real, porTabela, taxas, juros, liquido: total - taxas - juros,
     custo: soma(v => num(v.custoUnit)*num(v.qtd)), fretePago: soma(v => num(v.fretePago)), imposto: total*num(S.config.imposto)/100,
     sobra: soma(v => vendaCalc(v).lucro), qtd: soma(v => num(v.qtd)), status: f.status || "Recebido", cancelado: ls.every(v => !ativa(v))};
 }
@@ -1517,7 +1526,7 @@ function openPedido(k){
       ${L(`Desconto${f.cupom ? " (cupom " + esc(f.cupom) + ")" : ""}`, -g.desconto, "minus")}
       ${L("Frete cobrado da cliente", g.frete, "minus")}
       ${L("Total pago pela cliente", g.total, "tot")}
-      ${L(g.real ? "Taxas" : `Taxas (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -g.taxas, "minus")}
+      ${L(g.real ? "Taxas" : g.porTabela ? `Taxas (tabela Nuvem Pago: ${tabelaTaxa(f).taxa.toLocaleString("pt-BR")}%)` : `Taxas (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -g.taxas, "minus")}
       ${L("Juros", -g.juros, "minus")}
       ${L("Total líquido", g.liquido, "tot big")}
       ${L("Custo das peças", -g.custo, "minus")}
@@ -1823,24 +1832,24 @@ function painelFormas(gs){
   const forma = g => /pix/i.test(g.f.formaPagamento || "") ? "Pix" : (/cr[eé]dito/i.test(g.f.formaPagamento || "") || num(g.f.parcelas) > 1) ? "Cartão de crédito" : nomeForma(g.f.formaPagamento);
   const m = {}; vs.forEach(g => (m[forma(g)] ||= []).push(g));
   const linhas = Object.entries(m).sort((a,b) => b[1].length - a[1].length).map(([k,l]) => {
-    const reais = l.filter(g => g.real), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0), vr = reais.reduce((a,g)=>a+g.total,0);
+    const reais = l.filter(g => g.real || g.porTabela), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0), vr = reais.reduce((a,g)=>a+g.total,0);
     return `<tr><td><b>${esc(k)}</b></td><td class="n">${l.length}</td><td class="n">${brl(l.reduce((a,g)=>a+g.total,0))}</td><td class="n">${reais.length ? brl(tx) : "—"}</td><td class="n">${reais.length ? brl(ju) : "—"}</td><td class="n"><b>${reais.length ? brl(tx+ju) : "—"}</b>${vr ? `<div class="sub">${pct((tx+ju)/vr,2)}</div>` : ""}</td><td class="n hide-m">${reais.length}/${l.length}</td></tr>`; }).join("");
   return `<div class="panel"><h3>Cartão × Pix: quanto ficou com a operadora</h3>
-    <p class="sub" style="margin:0 0 10px">Taxas e juros reais cobrados pelo Nuvem Pago em cada forma de pagamento. Os que ainda não têm o valor real ficam de fora da soma (coluna "Com valor real"). Para buscar: Ajustes → Loja Nuvemshop → Buscar taxas e juros.</p>
-    <div class="tw"><table><thead><tr><th>Forma</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Perdido</th><th class="n hide-m">Com valor real</th></tr></thead><tbody>${linhas || emptyRow(7, "Sem vendas no período", "")}</tbody></table></div></div>`;
+    <p class="sub" style="margin:0 0 10px">Taxas e juros calculados pela tabela do Nuvem Pago (Ajustes → Taxas do Nuvem Pago), conforme a forma de pagamento e as parcelas de cada pedido.</p>
+    <div class="tw"><table><thead><tr><th>Forma</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Perdido</th><th class="n hide-m">Calculados</th></tr></thead><tbody>${linhas || emptyRow(7, "Sem vendas no período", "")}</tbody></table></div></div>`;
 }
 // Cartão de crédito: quanto custou (taxa + juros) cada número de parcelas, só com os valores reais informados pela loja
 function painelParcelado(gs){
   const cartao = gs.filter(g => g.f.status !== "Cancelado" && (/cr[eé]dito/i.test(g.f.formaPagamento || "") || num(g.f.parcelas) > 1));
   if(!cartao.length) return `<div class="panel"><h3>Cartão de crédito: taxas e juros</h3><p class="sub" style="margin:0">Nenhuma venda no cartão identificada no período. A forma de pagamento e as parcelas aparecem depois da busca completa na Nuvemshop.</p></div>`;
   const grupos = {}; cartao.forEach(g => { const k = Math.max(1, num(g.f.parcelas) || 1); (grupos[k] ||= []).push(g); });
-  const linha = (rot, l) => { const reais = l.filter(g => g.real), val = reais.reduce((a,g)=>a+g.total,0), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0);
+  const linha = (rot, l) => { const reais = l.filter(g => g.real || g.porTabela), val = reais.reduce((a,g)=>a+g.total,0), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0);
     return `<tr><td>${rot}</td><td class="n">${l.length}</td><td class="n">${brl(l.reduce((a,g)=>a+g.total,0))}</td><td class="n">${reais.length ? brl(tx) : "—"}</td><td class="n">${reais.length ? brl(ju) : "—"}</td><td class="n"><b>${val ? pct((tx+ju)/val, 2) : "—"}</b></td><td class="n hide-m">${reais.length}/${l.length}</td></tr>`; };
   const ks = Object.keys(grupos).map(Number).sort((a,b)=>a-b), parc = cartao.filter(g => num(g.f.parcelas) > 1);
-  const cobertura = cartao.filter(g => g.real).length;
+  const cobertura = cartao.filter(g => g.real || g.porTabela).length;
   return `<div class="panel"><h3>Cartão de crédito: taxas e juros</h3>
-    <p class="sub" style="margin:0 0 10px">Taxa + juros como % do valor de cada venda, calculado só com os pedidos em que a loja informou os valores reais (${cobertura} de ${cartao.length}).${cobertura < cartao.length ? " Os demais ficam de fora da média." : ""}</p>
-    <div class="tw"><table><thead><tr><th>Parcelas</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Taxa + juros</th><th class="n hide-m">Com valor real</th></tr></thead><tbody>
+    <p class="sub" style="margin:0 0 10px">Taxa + juros como % do valor de cada venda, calculado pela tabela do Nuvem Pago em Ajustes (${cobertura} de ${cartao.length} pedidos com forma de pagamento identificada).${cobertura < cartao.length ? " Os demais ficam de fora da média." : ""}</p>
+    <div class="tw"><table><thead><tr><th>Parcelas</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Taxa + juros</th><th class="n hide-m">Calculados</th></tr></thead><tbody>
       ${ks.map(k => linha(k === 1 ? "À vista (1x)" : k + "x", grupos[k])).join("")}
     </tbody><tfoot>${parc.length ? linha("Parceladas (2x ou mais)", parc).replace("<tr>", "<tr class=\"tot\">") : ""}${linha("Todas no cartão", cartao)}</tfoot></table></div>
     ${!cobertura ? `<p class="sub" style="margin:10px 0 0"><b>A Nuvemshop não enviou taxas e juros desses pedidos.</b> Para ter esse número, é preciso importar o extrato do Nuvem Pago.</p>` : ""}</div>`;
@@ -2036,10 +2045,17 @@ function vAjustes(){
   <div class="seclbl">Valores<span>usados nos cálculos</span></div>
   <form class="panel" id="cfg" style="display:flex;flex-direction:column;gap:14px">
     <div class="fgrid">
-      ${f("taxaGateway","Taxa do gateway / meio de pagamento (%)","Média cobrada por venda no cartão e Pix")}
+      ${f("taxaGateway","Taxa para outras formas de pagamento (%)","Boleto e formas sem tabela abaixo")}
       ${f("imposto","Impostos sobre a venda (%)","Ex.: alíquota do Simples Nacional")}
       ${f("margemAlvo","Meta de margem de contribuição (%)","Usada para sugerir o preço de cada peça","1")}
       ${f("metaFaturamento","Meta de faturamento mensal (R$)","Usada nos meses em que a planilha não tem a META","1")}
+    </div>
+    <h3 style="margin-top:6px">Taxas do Nuvem Pago</h3>
+    <p class="sub" style="margin:0">Usadas para calcular a taxa e os juros de cada pedido (a Nuvemshop não envia esses valores). Os campos marcados com <b>a confirmar</b> foram aproximados: confira na tabela do Nuvem Pago.</p>
+    <div class="fgrid">
+      ${f("taxaPix","Pix (%)","Taxa por venda no Pix")}
+      ${f("taxaCartao","Cartão de crédito (%)","Taxa por venda no cartão, em qualquer número de parcelas")}
+      ${Array.from({length:12},(_,i)=>i+1).map(n => f("juros"+n+"x", `Juros em ${n}x (%)${JUROS_CONFIRMADOS.includes(n) ? "" : " · a confirmar"}`, n === 1 ? "À vista no cartão" : "Juros do parcelamento pagos pela Seille")).join("")}
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
