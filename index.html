@@ -1812,7 +1812,24 @@ function vContador(){
   ${r.trocas.length ? `<div class="panel"><h3>Trocas e devoluções</h3><div class="tw"><table><thead><tr><th>Pedido</th><th>Data</th><th>Tipo</th><th class="n">Valor</th></tr></thead><tbody>
     ${r.trocas.map(g => `<tr class="click" data-ped="${esc(g.k)}"><td>#${esc(g.f.pedido)}<div class="sub">${esc(g.f.cliente||"")}</div></td><td>${dBR(g.f.data)}</td><td>${g.f.tipo === "troca" ? "Troca" : "Devolução"}</td><td class="n">${brl(g.total)}</td></tr>`).join("")}
   </tbody></table></div></div>` : ""}
+  ${painelParcelado(r.vendidos)}
   <p class="sub">Trocas e devoluções são marcadas abrindo o pedido em Pedidos (campo Tipo de pedido). Cancelamentos e estornos vêm da Nuvemshop.</p>`;
+}
+// Cartão de crédito: quanto custou (taxa + juros) cada número de parcelas, só com os valores reais informados pela loja
+function painelParcelado(gs){
+  const cartao = gs.filter(g => g.f.status !== "Cancelado" && (/cr[eé]dito/i.test(g.f.formaPagamento || "") || num(g.f.parcelas) > 1));
+  if(!cartao.length) return `<div class="panel"><h3>Cartão de crédito: taxas e juros</h3><p class="sub" style="margin:0">Nenhuma venda no cartão identificada no período. A forma de pagamento e as parcelas aparecem depois da busca completa na Nuvemshop.</p></div>`;
+  const grupos = {}; cartao.forEach(g => { const k = Math.max(1, num(g.f.parcelas) || 1); (grupos[k] ||= []).push(g); });
+  const linha = (rot, l) => { const reais = l.filter(g => g.real), val = reais.reduce((a,g)=>a+g.total,0), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0);
+    return `<tr><td>${rot}</td><td class="n">${l.length}</td><td class="n">${brl(l.reduce((a,g)=>a+g.total,0))}</td><td class="n">${reais.length ? brl(tx) : "—"}</td><td class="n">${reais.length ? brl(ju) : "—"}</td><td class="n"><b>${val ? pct((tx+ju)/val, 2) : "—"}</b></td><td class="n hide-m">${reais.length}/${l.length}</td></tr>`; };
+  const ks = Object.keys(grupos).map(Number).sort((a,b)=>a-b), parc = cartao.filter(g => num(g.f.parcelas) > 1);
+  const cobertura = cartao.filter(g => g.real).length;
+  return `<div class="panel"><h3>Cartão de crédito: taxas e juros</h3>
+    <p class="sub" style="margin:0 0 10px">Taxa + juros como % do valor de cada venda, calculado só com os pedidos em que a loja informou os valores reais (${cobertura} de ${cartao.length}).${cobertura < cartao.length ? " Os demais ficam de fora da média." : ""}</p>
+    <div class="tw"><table><thead><tr><th>Parcelas</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Taxa + juros</th><th class="n hide-m">Com valor real</th></tr></thead><tbody>
+      ${ks.map(k => linha(k === 1 ? "À vista (1x)" : k + "x", grupos[k])).join("")}
+    </tbody><tfoot>${parc.length ? linha("Parceladas (2x ou mais)", parc).replace("<tr>", "<tr class=\"tot\">") : ""}${linha("Todas no cartão", cartao)}</tfoot></table></div>
+    ${!cobertura ? `<p class="sub" style="margin:10px 0 0"><b>A Nuvemshop não enviou taxas e juros desses pedidos.</b> Para ter esse número, é preciso importar o extrato do Nuvem Pago.</p>` : ""}</div>`;
 }
 function textoContador(){
   const [de, ate] = faixaRecorte(), r = resumoContador(d => !!d && d >= de && d <= ate);
