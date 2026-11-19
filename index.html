@@ -1235,10 +1235,12 @@ function vPedidos(){
 function dadosCupons(){
   const gs = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data))).filter(g => !g.cancelado);
   const com = gs.filter(g => g.f.cupom), sem = gs.filter(g => !g.f.cupom);
-  const m = {}; com.forEach(g => { const k = g.f.cupom; const o = (m[k] ||= {n:0, desconto:0, total:0}); o.n++; o.desconto += g.desconto; o.total += g.total; });
+  // só o desconto do cupom (o desconto do Pix do mesmo pedido fica de fora); pedidos antigos sem detalhe usam o desconto total
+  const descCupom = g => g.ls.some(v => v.descontoCupom != null) ? g.ls.reduce((a,v) => a + num(v.descontoCupom), 0) : g.desconto;
+  const m = {}; com.forEach(g => { const k = g.f.cupom; const o = (m[k] ||= {n:0, desconto:0, total:0}); o.n++; o.desconto += descCupom(g); o.total += g.total; });
   const soma = (l, f) => l.reduce((a,g) => a + f(g), 0);
   return {gs, com, sem, lista: Object.entries(m).sort((a,b) => b[1].n - a[1].n || b[1].total - a[1].total),
-    desc: soma(com, g => g.desconto), fatCom: soma(com, g => g.total), fatSem: soma(sem, g => g.total)};
+    desc: soma(com, descCupom), pixCom: soma(com, g => g.desconto - descCupom(g)), fatCom: soma(com, g => g.total), fatSem: soma(sem, g => g.total)};
 }
 // Conversão do site: pedidos ÷ visitas (sessões vêm da planilha), comparada com o mesmo período do ano anterior
 function cardConversao(c, cmp){
@@ -1453,7 +1455,7 @@ function openCupons(){
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="kpi kclick" data-cupir="__com"><span class="l">Com cupom ›</span><span class="v num">${d.com.length}</span><span class="s">${n ? pct(d.com.length/n,0) : "—"} dos pedidos · ${brl(d.fatCom)} · ticket ${tk(d.fatCom, d.com)}</span></div>
       <div class="kpi kclick" data-cupir="__sem"><span class="l">Sem cupom ›</span><span class="v num">${d.sem.length}</span><span class="s">${n ? pct(d.sem.length/n,0) : "—"} dos pedidos · ${brl(d.fatSem)} · ticket ${tk(d.fatSem, d.sem)}</span></div>
-      <div class="kpi"><span class="l">Descontos dados</span><span class="v num">${brl(d.desc)}</span><span class="s">${d.fatCom + d.desc ? pct(d.desc/(d.fatCom + d.desc)) + " do valor dos pedidos com cupom" : ""}</span></div>
+      <div class="kpi"><span class="l">Desconto dos cupons</span><span class="v num">${brl(d.desc)}</span><span class="s">${d.fatCom + d.desc ? pct(d.desc/(d.fatCom + d.desc)) + " do valor dos pedidos com cupom" : ""}${d.pixCom > 0.009 ? ` · além de ${brl(d.pixCom)} de desconto do Pix nesses pedidos` : ""}</span></div>
     </div>
     <div class="tw"><table>
       <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n hide-m">Desconto dado</th><th class="n">Faturamento</th><th class="n hide-m">Ticket médio</th></tr></thead>
@@ -1756,6 +1758,7 @@ function vContas(){
 // ---------- resumo para o contador (base do Simples Nacional) ----------
 // Vendas pagas no período, menos descontos (cupom, Pix/forma de pagamento, outros), cancelamentos/estornos
 // (no mês em que aconteceram) e trocas/devoluções marcadas no app.
+const nomeForma = f => ({other:"Outros", others:"Outros", free:"Gratuito (pedido sem valor)", wire_transfer:"Transferência", cash:"Dinheiro", "":"Não informado"})[String(f||"").toLowerCase()] ?? f;
 const foiVendaPaga = v => v.status !== "Cancelado" || v.foiPago !== false;
 function resumoContador(dentro){
   const somaLs = (ls, k) => ls.reduce((a,v) => a + num(v[k]), 0);
@@ -1765,7 +1768,7 @@ function resumoContador(dentro){
     pecas += g.pecas; frete += g.frete;
     const c = somaLs(g.ls, "descontoCupom"), pg = somaLs(g.ls, "descontoPagamento"), detalhado = g.ls.some(v => v.descontoCupom != null);
     cupom += c; pagto += pg; outros += Math.max(0, g.desconto - c - pg); if(!detalhado && g.desconto > 0) semDetalhe++;
-    const f = g.f.formaPagamento || "Não informado"; formas[f] = (formas[f]||0) + g.total;
+    const f = nomeForma(g.f.formaPagamento); formas[f] = (formas[f]||0) + g.total;
   });
   const valorPedidos = pecas + frete - cupom - pagto - outros;
   const cancelados = agrupaPedidos(S.vendas.filter(v => v.status === "Cancelado" && v.foiPago !== false && v.nuvemshopId && dentro(v.canceladoEm || v.data)));
@@ -1827,7 +1830,7 @@ async function csvContador(){
   gs.sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"")).forEach(g => {
     const c = g.ls.reduce((a,v)=>a+num(v.descontoCupom),0), pg = g.ls.reduce((a,v)=>a+num(v.descontoPagamento),0);
     const sit = g.f.status === "Cancelado" ? "Cancelado/estornado" : ehTroca(g.f) ? (g.f.tipo === "troca" ? "Troca" : "Devolução") : "Venda";
-    linhas.push([dBR(g.f.data), g.f.pedido, g.f.cliente, sit, g.f.canceladoEm ? dBR(g.f.canceladoEm) : "", g.f.formaPagamento || "", n2(g.pecas), n2(g.frete), n2(c), g.f.cupom || "", n2(pg), n2(Math.max(0, g.desconto - c - pg)), n2(g.total)]);
+    linhas.push([dBR(g.f.data), g.f.pedido, g.f.cliente, sit, g.f.canceladoEm ? dBR(g.f.canceladoEm) : "", nomeForma(g.f.formaPagamento), n2(g.pecas), n2(g.frete), n2(c), g.f.cupom || "", n2(pg), n2(Math.max(0, g.desconto - c - pg)), n2(g.total)]);
   });
   const csv = "﻿" + linhas.map(l => l.map(x => `"${String(x ?? "").replace(/"/g,'""')}"`).join(";")).join("\r\n");
   const dl = await window.claude?.use?.("downloads"); if(!dl){ toast("Download indisponível"); return; }
