@@ -1793,14 +1793,14 @@ function vContador(){
       ${L("= Valor dos pedidos", r.valorPedidos, "tot")}
       ${L("(−) Cancelamentos e estornos", -r.devol, "minus", `${r.cancelados.length} ${r.cancelados.length===1?"pedido cancelado":"pedidos cancelados"} no período, depois de pagos`)}
       ${L("(−) Trocas e devoluções", -r.trocaV, "minus", `${r.trocas.length} ${r.trocas.length===1?"marcado":"marcados"} no app`)}
-      ${L("= Receita líquida", r.liquida, "tot big")}
+      ${L("= Base para o Simples Nacional", r.liquida, "tot big", "inclui o frete; descontos de cupom e Pix, cancelamentos, trocas e devoluções ficam de fora")}
     </tbody></table>
-    <p class="sub" style="margin:10px 0 0">Confirme com o contador se o frete cobrado entra na base do Simples. Sem o frete, a receita líquida das peças seria ${brl(r.liquida - r.frete)}.</p></div>
+    ${r.cupom + r.pagto ? `<p class="sub" style="margin:10px 0 0">Neste período, <b>${brl(r.cupom + r.pagto)}</b> em descontos de cupom e Pix não entram na base${r.devol + r.trocaV ? `, além de <b>${brl(r.devol + r.trocaV)}</b> em cancelamentos, trocas e devoluções` : ""}.</p>` : ""}</div>
     <div class="panel"><h3>Recebido por forma de pagamento</h3><div class="tw"><table><thead><tr><th>Forma</th><th class="n">Valor</th></tr></thead><tbody>
       ${Object.entries(r.formas).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${brl(v)}</td></tr>`).join("") || emptyRow(2, "Sem vendas", "")}
     </tbody></table></div></div>
   </div>
-  ${porMes.length ? `<div class="panel"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th><th class="n">Vendas</th><th class="n hide-m">Cupom</th><th class="n hide-m">Pix</th><th class="n hide-m">Cancel.</th><th class="n hide-m">Trocas</th><th class="n">Receita líquida</th></tr></thead><tbody>
+  ${porMes.length ? `<div class="panel"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th><th class="n">Vendas</th><th class="n hide-m">Cupom</th><th class="n hide-m">Pix</th><th class="n hide-m">Cancel.</th><th class="n hide-m">Trocas</th><th class="n">Base do Simples</th></tr></thead><tbody>
     ${porMes.map(([ym,x]) => `<tr class="click" data-ym="${ym}"><td>${ymLabel(ym)}</td><td class="n">${brl(x.pecas + x.frete)}</td><td class="n hide-m">${brl(x.cupom)}</td><td class="n hide-m">${brl(x.pagto)}</td><td class="n hide-m">${brl(x.devol)}</td><td class="n hide-m">${brl(x.trocaV)}</td><td class="n"><b>${brl(x.liquida)}</b></td></tr>`).join("")}
   </tbody></table></div></div>` : ""}
   ${r.cancelados.length ? `<div class="panel"><h3>Cancelamentos e estornos</h3><div class="tw"><table><thead><tr><th>Pedido</th><th>Vendido em</th><th>Cancelado em</th><th class="n">Valor</th></tr></thead><tbody>
@@ -1817,7 +1817,7 @@ function textoContador(){
     `Vendas pagas (peças): ${brl(r.pecas)} (${r.vendidos.length} pedidos)`, `Frete cobrado: ${brl(r.frete)}`,
     `Descontos de cupom: -${brl(r.cupom)}`, `Desconto por forma de pagamento (Pix): -${brl(r.pagto)}`, ...(r.outros ? [`Outros descontos: -${brl(r.outros)}`] : []),
     `Valor dos pedidos: ${brl(r.valorPedidos)}`, `Cancelamentos e estornos: -${brl(r.devol)} (${r.cancelados.length})`, `Trocas e devoluções: -${brl(r.trocaV)} (${r.trocas.length})`,
-    `Receita líquida: ${brl(r.liquida)}`, `Receita líquida sem frete: ${brl(r.liquida - r.frete)}`].join("\n");
+    ``, `BASE PARA O SIMPLES NACIONAL: ${brl(r.liquida)}`, `(inclui o frete; descontos de cupom e Pix, cancelamentos, trocas e devoluções já descontados)`].join("\n");
 }
 async function csvContador(){
   const [de, ate] = faixaRecorte(), dentro = d => !!d && d >= de && d <= ate;
