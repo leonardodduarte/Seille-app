@@ -1106,7 +1106,6 @@ function vPedidos(){
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   ${PED_ROTULO[PEDF] ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Mostrando <b>${PED_ROTULO[PEDF].toLowerCase()}</b>, de todas as datas.</span><button class="btn" data-pedf="todos">Ver todos ›</button></div>` : ""}
-  <div class="cupbar"><div class="seg">${[["","Todos"],["__com","Com cupom"],["__sem","Sem cupom"]].map(([k,l]) => `<button class="${PEDCUP===k?"on":""}" data-cupf="${k}">${l}</button>`).join("")}</div><button class="btn" data-cupons>Resumo dos cupons ›</button></div>
   <div class="filtros">
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
     <select class="flt" id="peduf" aria-label="Estado"><option value="">Todos os estados</option>${ufs.map(u=>`<option${u===PEDUF?" selected":""}>${esc(u)}</option>`).join("")}</select>
