@@ -1273,24 +1273,15 @@ function painelCustoVenda(){
     ${ga && isFinite(gp) ? `<p class="sub" style="margin:0">A gestão soma <b>${brl(gp)}</b> a cada pedido. Olhando só os anúncios, esse valor fica de fora, mas ele também precisa ser pago pelas vendas.</p>` : ""}
   </div>`;
 }
-// Tráfego pago x vendas: quanto do investimento (anúncios + gestão) foi para cada venda e para cada real vendido
+// Tráfego pago x vendas: quanto do investimento (anúncios + gestão) foi para cada venda e para cada real vendido (só o período escolhido, sem comparar com o ano anterior)
 function openTrafConv(){
-  const cmp = comparaAnoAnterior(), a = cmp.atual, b = cmp.ant, R = cmp.R, RA = cmp.RA;
-  const ia = a.ads + (a.gestao||0), ib = b.ads + (b.gestao||0);
-  const sa = sessoesEntre(R.de, R.ate), sb = sessoesEntre(RA.de, RA.ate);
+  const cmp = comparaAnoAnterior(), a = cmp.atual, R = cmp.R;
+  const ia = a.ads + (a.gestao||0);
+  const sa = sessoesEntre(R.de, R.ate);
   const div = (x, y) => y ? x / y : NaN;
   const mostra = (v, f) => isFinite(v) ? f(v) : "—";
   const p2 = v => pct(v, 2), p1 = v => pct(v, 1), xx = v => v.toLocaleString("pt-BR",{maximumFractionDigits:2}) + "×";
-  // variação: "melhor" decide a cor (para custos, cair é bom)
-  // percentuais (conversão, % do faturamento) variam em pontos percentuais; o resto em %
-  const varia = (x, y, melhor = "sobe", pp = false) => {
-    if(!isFinite(x) || !isFinite(y) || (!pp && !y)) return "";
-    const d = pp ? x - y : (x - y) / Math.abs(y), bom = melhor === "sobe" ? d >= 0 : d <= 0;
-    const txt = pp ? (Math.abs(d)*100).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:2}) + " p.p." : pct(Math.abs(d), 0);
-    return `<span class="var ${bom ? "up" : "down"}">${d >= 0 ? "+" : "−"}${txt}</span>`;
-  };
-  const linha = (rot, x, y, f, melhor, cls = "") => `<tr class="${cls}"><td>${rot}</td><td class="n">${mostra(x, f)}${melhor && varia(x, y, melhor, f === p1 || f === p2) ? `<div style="font-size:12px">${varia(x, y, melhor, f === p1 || f === p2)}</div>` : ""}</td><td class="n">${mostra(y, f)}</td></tr>`;
-  const anoA = R.de.slice(0,4), anoB = RA.de.slice(0,4);
+  const linha = (rot, x, f, cls = "") => `<tr class="${cls}"><td>${rot}</td><td class="n">${mostra(x, f)}</td></tr>`;
   const cpv = div(ia, a.nPed), pfat = div(ia, a.receita);
   // mês a mês no ano escolhido (até o mês atual)
   const ano = MES.slice(0,4), meses = Array.from({length:12}, (_,i) => ano + "-" + String(i+1).padStart(2,"0")).filter(ym => ym <= today().slice(0,7));
@@ -1298,28 +1289,27 @@ function openTrafConv(){
   closeModal();
   modalEl = document.createElement("div"); modalEl.className = "ov";
   modalEl.innerHTML = `<div class="modal largo">
-    <div><h2>Tráfego pago x vendas · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${dBR(R.de)} a ${dBR(R.ate)} comparado com ${dBR(RA.de)} a ${dBR(RA.ate)}. Investimento = anúncios + gestão de tráfego (a gestão entra proporcional aos dias).</p></div>
+    <div><h2>Tráfego pago x vendas · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${dBR(R.de)} a ${dBR(R.ate)}. Investimento = anúncios + gestão de tráfego (a gestão entra proporcional aos dias).</p></div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-      <div class="kpi"><span class="l">Custo por venda</span><span class="v num">${mostra(cpv, brl)}</span><span class="s">${brl(ia)} ÷ ${a.nPed} ${a.nPed===1?"venda":"vendas"}</span>${isFinite(div(ib, b.nPed)) ? `<span class="s cmp">${varia(cpv, div(ib, b.nPed), "desce")} vs. ${brl(div(ib, b.nPed))} em ${anoB}</span>` : ""}</div>
-      <div class="kpi"><span class="l">Investimento ÷ faturamento</span><span class="v num">${mostra(pfat, p1)}</span><span class="s">${isFinite(pfat) ? `A cada R$ 100 vendidos, ${brl(pfat*100)} foram para tráfego` : "Sem faturamento no período"}</span>${isFinite(div(ib, b.receita)) ? `<span class="s cmp">${varia(pfat, div(ib, b.receita), "desce", true)} vs. ${p1(div(ib, b.receita))} em ${anoB}</span>` : ""}</div>
+      <div class="kpi"><span class="l">Custo por venda</span><span class="v num">${mostra(cpv, brl)}</span><span class="s">${brl(ia)} ÷ ${a.nPed} ${a.nPed===1?"venda":"vendas"}</span></div>
+      <div class="kpi"><span class="l">Investimento ÷ faturamento</span><span class="v num">${mostra(pfat, p1)}</span><span class="s">${isFinite(pfat) ? `A cada R$ 100 vendidos, ${brl(pfat*100)} foram para tráfego` : "Sem faturamento no período"}</span></div>
     </div>
     <div class="tw"><table>
-      <thead><tr><th></th><th class="n">${anoA}</th><th class="n">${anoB}</th></tr></thead>
       <tbody>
-        ${linha("Anúncios", a.ads, b.ads, brl, "")}
-        ${linha("Gestão de tráfego", a.gestao||0, b.gestao||0, brl, "")}
-        ${linha("<b>Total investido</b>", ia, ib, brl, "", "tot")}
-        ${linha("Vendas (pedidos)", a.nPed, b.nPed, intf, "sobe")}
-        ${linha("Faturamento", a.receita, b.receita, brl, "sobe")}
-        ${linha("Visitas do site", sa ?? NaN, sb ?? NaN, intf, "sobe")}
-        ${linha("Conversão", div(a.nPed, sa), div(b.nPed, sb), p2, "sobe")}
-        ${linha("<b>Custo por venda</b>", cpv, div(ib, b.nPed), brl, "desce", "tot")}
-        ${linha("Só anúncios por venda", div(a.ads, a.nPed), div(b.ads, b.nPed), brl, "desce")}
-        ${linha("<b>Investimento ÷ faturamento</b>", pfat, div(ib, b.receita), p1, "desce", "tot")}
-        ${linha("Só anúncios ÷ faturamento", div(a.ads, a.receita), div(b.ads, b.receita), p1, "desce")}
-        ${linha("Retorno (faturamento ÷ investido)", div(a.receita, ia), div(b.receita, ib), xx, "sobe")}
-        ${linha("Retorno só dos anúncios", div(a.receita, a.ads), div(b.receita, b.ads), xx, "sobe")}
-        ${linha("Custo por visita", div(ia, sa), div(ib, sb), brl, "desce")}
+        ${linha("Anúncios", a.ads, brl)}
+        ${linha("Gestão de tráfego", a.gestao||0, brl)}
+        ${linha("<b>Total investido</b>", ia, brl, "tot")}
+        ${linha("Vendas (pedidos)", a.nPed, intf)}
+        ${linha("Faturamento", a.receita, brl)}
+        ${linha("Visitas do site", sa ?? NaN, intf)}
+        ${linha("Conversão", div(a.nPed, sa), p2)}
+        ${linha("<b>Custo por venda</b>", cpv, brl, "tot")}
+        ${linha("Só anúncios por venda", div(a.ads, a.nPed), brl)}
+        ${linha("<b>Investimento ÷ faturamento</b>", pfat, p1, "tot")}
+        ${linha("Só anúncios ÷ faturamento", div(a.ads, a.receita), p1)}
+        ${linha("Retorno (faturamento ÷ investido)", div(a.receita, ia), xx)}
+        ${linha("Retorno só dos anúncios", div(a.receita, a.ads), xx)}
+        ${linha("Custo por visita", div(ia, sa), brl)}
       </tbody>
     </table></div>
     ${mm.length ? `<div><h3 style="margin:0 0 8px">Mês a mês em ${ano}</h3><div class="tw"><table>
