@@ -145,9 +145,11 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     const pago = ["paid", "authorized"].includes(o.payment_status);
     const doPedido = [...existentes.entries()].filter(([, d]) => d.nuvemshopId === String(o.id));
     if (!pago && !cancelado) { cont.aguardando++; continue; }      // aguardando pagamento: ainda não é venda
-    if (cancelado && !doPedido.length) { cont.cancelados++; continue; } // cancelado antes de entrar no app
+    // cancelado sem nunca ter sido pago não é venda; o que foi pago e depois cancelado/estornado entra (para o resumo do contador)
+    if (cancelado && !doPedido.length && !o.paid_at) { cont.cancelados++; continue; }
 
     const itens: any[] = Array.isArray(o.products) ? o.products : [];
+    const antes0 = doPedido[0]?.[1];
     const subtotal = itens.reduce((a, p) => a + n(p.price) * n(p.quantity), 0);
     const freteCobrado = n(o.shipping_cost_customer);
     const fretePago = o.shipping_cost_owner != null && n(o.shipping_cost_owner) > 0 ? n(o.shipping_cost_owner) : freteCobrado;
@@ -168,12 +170,19 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     const arquivado = o.status === "closed";
     const embalado = !enviado && ["unfulfilled", "packed", "unshipped"].includes(o.shipping_status);
     const statusLoja = cancelado ? "Cancelado" : arquivado ? "Entregue" : enviado ? "Enviado" : embalado ? "Pronto" : "Recebido";
+    // descontos separados, como a Nuvemshop informa: cupom, forma de pagamento (ex.: Pix) e promoções
+    const dCupom = r2(n(o.discount_coupon)), dPagto = r2(n(o.discount_gateway));
+    const dOutros = Math.max(0, r2(desconto - dCupom - dPagto));
+    const metodo = String(o.payment_details?.method ?? o.payment_method ?? "").toLowerCase();
+    const forma = /pix/.test(metodo) || /pix/i.test(String(o.gateway_name ?? "")) ? "Pix" : /credit|cartao|card/.test(metodo) ? "Cartão de crédito" : /debit/.test(metodo) ? "Cartão de débito" : /boleto|ticket/.test(metodo) ? "Boleto" : (metodo || "");
     const comum = {
       data: dataBR(o.paid_at || o.created_at), pedido: String(o.number ?? o.id),
       cliente: o.customer?.name || o.contact_name || o.billing_name || "",
       cidade: end.city || o.billing_city || "", estado: paraUF(end.province || o.billing_province),
       cupom, canal: "Nuvemshop", nuvemshopId: String(o.id), pagamento: o.gateway_name || o.gateway || "",
       ...(parcelas ? { parcelas } : {}),
+      ...(forma ? { formaPagamento: forma } : {}),
+      ...(cancelado ? { canceladoEm: o.cancelled_at ? dataBR(o.cancelled_at) : (antes0?.canceladoEm || dataBR(o.updated_at || o.created_at)), foiPago: !!o.paid_at || !!doPedido.length } : {}),
     };
 
     itens.forEach((p, i) => {
@@ -194,6 +203,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         criadoEm: antes?.criadoEm || new Date().toISOString(),
         ...(antes?.tipo ? { tipo: antes.tipo } : {}), // troca / devolução marcada no app
       };
+      if (i === 0) { novo.descontoCupom = dCupom; novo.descontoPagamento = dPagto; novo.descontoOutros = dOutros; }
       if (taxasApi != null || jurosApi != null) {          // valores da loja
         novo.taxasPagas = i === 0 ? (taxasApi ?? 0) : 0; novo.jurosPagos = i === 0 ? (jurosApi ?? 0) : 0;
       } else if (antes && (antes.taxasPagas != null || antes.jurosPagos != null)) { // digitados no app

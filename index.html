@@ -429,7 +429,7 @@ const S = {colecoes:[], custosColecao:[], produtos:[], vendas:[], fixos:[], vari
 let PAGF = "";
 let MES = today().slice(0,7);
 let ANO = false; // true = "Ano todo" (Painel e Pedidos mostram o ano inteiro)
-const ANO_VIEWS = ["painel","pedidos","trafego"];
+const ANO_VIEWS = ["painel","pedidos","trafego","contador"];
 let PER = null; // {de, ate}: período de tal dia até tal dia (Painel e Pedidos)
 const periodo = () => PER && ANO_VIEWS.includes(curView()) ? PER : null;
 const anoTodo = () => ANO && !PER && ANO_VIEWS.includes(curView());
@@ -802,13 +802,13 @@ function openForm(col, doc, preset){
 document.addEventListener("keydown", e => { if(e.key === "Escape"){ closeModal(); const sh = document.getElementById("sheet"); if(sh) sh.hidden = true; } });
 
 // ---------- views ----------
-const VIEWS = ["contas","painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
+const VIEWS = ["contador","contas","painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
 const curView = () => { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "painel"; };
 const docLinks = arr => (arr||[]).map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"comprovante")}</a>`).join("");
 const exBadge = d => d.exemplo ? `<span class="tag">exemplo</span>` : "";
 const statusPill = s => `<span class="pill ${STATUS_CLS[s]||""}">${esc(s||"Recebido")}</span>`;
 
-const PERIOD_VIEWS = ["painel","pedidos","custos","funcionarias","trafego","impostos"];
+const PERIOD_VIEWS = ["painel","pedidos","custos","funcionarias","trafego","impostos","contador"];
 function periodBar(){
   const ano = MES.slice(0,4), anos = new Set([today().slice(0,4), ano]);
   const porAno = {};
@@ -1510,6 +1510,96 @@ function vContas(){
   return `<div class="head"><div><h2>Contas a pagar</h2><p>Boletos e guias lançados como ainda não pagos (pela aba Documentos ou à mão em Custos e Impostos). Toque em <b>Pago</b> quando pagar: a conta sai daqui e fica registrada com a data de hoje.</p></div></div>
   ${cs.length ? grupo("Vencidas", venc) + grupo("Vencem nos próximos 7 dias", sem) + grupo("Próximas", depois)
     : `<div class="panel empty"><b>Nenhuma conta a pagar</b>Quando um boleto ou guia for lançado sem comprovante de pagamento, ele aparece aqui com o vencimento.</div>`}`;
+}
+// ---------- resumo para o contador (base do Simples Nacional) ----------
+// Vendas pagas no período, menos descontos (cupom, Pix/forma de pagamento, outros), cancelamentos/estornos
+// (no mês em que aconteceram) e trocas/devoluções marcadas no app.
+const foiVendaPaga = v => v.status !== "Cancelado" || v.foiPago !== false;
+function resumoContador(dentro){
+  const somaLs = (ls, k) => ls.reduce((a,v) => a + num(v[k]), 0);
+  const vendidos = agrupaPedidos(S.vendas.filter(v => dentro(v.data) && foiVendaPaga(v)));
+  let pecas=0, frete=0, cupom=0, pagto=0, outros=0, semDetalhe=0; const formas = {};
+  vendidos.forEach(g => {
+    pecas += g.pecas; frete += g.frete;
+    const c = somaLs(g.ls, "descontoCupom"), pg = somaLs(g.ls, "descontoPagamento"), detalhado = g.ls.some(v => v.descontoCupom != null);
+    cupom += c; pagto += pg; outros += Math.max(0, g.desconto - c - pg); if(!detalhado && g.desconto > 0) semDetalhe++;
+    const f = g.f.formaPagamento || "Não informado"; formas[f] = (formas[f]||0) + g.total;
+  });
+  const valorPedidos = pecas + frete - cupom - pagto - outros;
+  const cancelados = agrupaPedidos(S.vendas.filter(v => v.status === "Cancelado" && v.foiPago !== false && v.nuvemshopId && dentro(v.canceladoEm || v.data)));
+  const trocas = agrupaPedidos(S.vendas.filter(v => ehTroca(v) && v.status !== "Cancelado" && dentro(v.data)));
+  const devol = cancelados.reduce((a,g)=>a+g.total,0), trocaV = trocas.reduce((a,g)=>a+g.total,0);
+  return {vendidos, pecas, frete, cupom, pagto, outros, semDetalhe, valorPedidos, cancelados, trocas, devol, trocaV, liquida: valorPedidos - devol - trocaV, formas};
+}
+function faixaRecorte(){ const p = periodo(); if(p) return [p.de, p.ate]; if(anoTodo()){ const a = MES.slice(0,4); return [a+"-01-01", a+"-12-31"]; } return [MES+"-01", MES+"-31"]; }
+function vContador(){
+  const [de, ate] = faixaRecorte(), r = resumoContador(d => !!d && d >= de && d <= ate), rot = rotuloRecorte();
+  const L = (l, v, cls="", nota="") => `<tr class="${cls}"><td>${l}${nota ? `<div class="sub">${nota}</div>` : ""}</td><td class="n">${brl(v)}</td></tr>`;
+  const porMes = anoTodo() ? MESES.map((m,i) => { const ym = MES.slice(0,4) + "-" + String(i+1).padStart(2,"0"); const x = resumoContador(d => (d||"").startsWith(ym)); return [ym, x]; }).filter(([,x]) => x.vendidos.length || x.cancelados.length) : [];
+  const precisaSync = !S.config.detalheDescontos;
+  return `<div class="head"><div><h2>Resumo para o contador · ${esc(rot)}</h2><p>Valores das vendas da loja para a apuração do Simples Nacional, já separando o que não é receita: descontos de cupom, desconto do Pix (forma de pagamento), cancelamentos e estornos, trocas e devoluções.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-copiacontador>Copiar resumo</button><button class="btn pri" data-csvcontador>Baixar planilha (.csv)</button></div></div>
+  ${precisaSync ? `<div class="banner warn">${sincDetalhe ? `<span class="spin"></span>Buscando na Nuvemshop o detalhe dos descontos e os pedidos cancelados de todas as vendas… pode levar alguns minutos. Deixe o app aberto.` : `Os pedidos importados antes de hoje ainda não têm os descontos separados (cupom × Pix) nem os pedidos cancelados depois de pagos. <button class="lnk" data-sincdetalhe>Buscar agora</button>`}</div>` : ""}
+  ${r.semDetalhe && !precisaSync ? `<div class="banner info">${r.semDetalhe} ${r.semDetalhe===1?"pedido tem":"pedidos têm"} desconto sem o detalhe de cupom/Pix; o valor aparece em "Outros descontos".</div>` : ""}
+  <div class="grid2">
+    <div class="panel"><h3>Resumo</h3><table class="dre"><tbody>
+      ${L("Vendas pagas (valor das peças)", r.pecas, "big", `${r.vendidos.length} pedidos pagos no período`)}
+      ${L("(+) Frete cobrado das clientes", r.frete, "minus")}
+      ${L("(−) Descontos de cupom", -r.cupom, "minus")}
+      ${L("(−) Desconto por forma de pagamento (Pix)", -r.pagto, "minus")}
+      ${r.outros ? L("(−) Outros descontos", -r.outros, "minus", "promoções ou desconto sem detalhe") : ""}
+      ${L("= Valor dos pedidos", r.valorPedidos, "tot")}
+      ${L("(−) Cancelamentos e estornos", -r.devol, "minus", `${r.cancelados.length} ${r.cancelados.length===1?"pedido cancelado":"pedidos cancelados"} no período, depois de pagos`)}
+      ${L("(−) Trocas e devoluções", -r.trocaV, "minus", `${r.trocas.length} ${r.trocas.length===1?"marcado":"marcados"} no app`)}
+      ${L("= Receita líquida", r.liquida, "tot big")}
+    </tbody></table>
+    <p class="sub" style="margin:10px 0 0">Confirme com o contador se o frete cobrado entra na base do Simples. Sem o frete, a receita líquida das peças seria ${brl(r.liquida - r.frete)}.</p></div>
+    <div class="panel"><h3>Recebido por forma de pagamento</h3><div class="tw"><table><thead><tr><th>Forma</th><th class="n">Valor</th></tr></thead><tbody>
+      ${Object.entries(r.formas).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${brl(v)}</td></tr>`).join("") || emptyRow(2, "Sem vendas", "")}
+    </tbody></table></div></div>
+  </div>
+  ${porMes.length ? `<div class="panel"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th><th class="n">Vendas</th><th class="n hide-m">Cupom</th><th class="n hide-m">Pix</th><th class="n hide-m">Cancel.</th><th class="n hide-m">Trocas</th><th class="n">Receita líquida</th></tr></thead><tbody>
+    ${porMes.map(([ym,x]) => `<tr class="click" data-ym="${ym}"><td>${ymLabel(ym)}</td><td class="n">${brl(x.pecas + x.frete)}</td><td class="n hide-m">${brl(x.cupom)}</td><td class="n hide-m">${brl(x.pagto)}</td><td class="n hide-m">${brl(x.devol)}</td><td class="n hide-m">${brl(x.trocaV)}</td><td class="n"><b>${brl(x.liquida)}</b></td></tr>`).join("")}
+  </tbody></table></div></div>` : ""}
+  ${r.cancelados.length ? `<div class="panel"><h3>Cancelamentos e estornos</h3><div class="tw"><table><thead><tr><th>Pedido</th><th>Vendido em</th><th>Cancelado em</th><th class="n">Valor</th></tr></thead><tbody>
+    ${r.cancelados.map(g => `<tr class="click" data-ped="${esc(g.k)}"><td>#${esc(g.f.pedido)}<div class="sub">${esc(g.f.cliente||"")}</div></td><td>${dBR(g.f.data)}</td><td>${dBR(g.f.canceladoEm || g.f.data)}</td><td class="n">${brl(g.total)}</td></tr>`).join("")}
+  </tbody></table></div></div>` : ""}
+  ${r.trocas.length ? `<div class="panel"><h3>Trocas e devoluções</h3><div class="tw"><table><thead><tr><th>Pedido</th><th>Data</th><th>Tipo</th><th class="n">Valor</th></tr></thead><tbody>
+    ${r.trocas.map(g => `<tr class="click" data-ped="${esc(g.k)}"><td>#${esc(g.f.pedido)}<div class="sub">${esc(g.f.cliente||"")}</div></td><td>${dBR(g.f.data)}</td><td>${g.f.tipo === "troca" ? "Troca" : "Devolução"}</td><td class="n">${brl(g.total)}</td></tr>`).join("")}
+  </tbody></table></div></div>` : ""}
+  <p class="sub">Trocas e devoluções são marcadas abrindo o pedido em Pedidos (campo Tipo de pedido). Cancelamentos e estornos vêm da Nuvemshop.</p>`;
+}
+function textoContador(){
+  const [de, ate] = faixaRecorte(), r = resumoContador(d => !!d && d >= de && d <= ate);
+  return [`Seille · resumo de vendas · ${rotuloRecorte()}`, ``,
+    `Vendas pagas (peças): ${brl(r.pecas)} (${r.vendidos.length} pedidos)`, `Frete cobrado: ${brl(r.frete)}`,
+    `Descontos de cupom: -${brl(r.cupom)}`, `Desconto por forma de pagamento (Pix): -${brl(r.pagto)}`, ...(r.outros ? [`Outros descontos: -${brl(r.outros)}`] : []),
+    `Valor dos pedidos: ${brl(r.valorPedidos)}`, `Cancelamentos e estornos: -${brl(r.devol)} (${r.cancelados.length})`, `Trocas e devoluções: -${brl(r.trocaV)} (${r.trocas.length})`,
+    `Receita líquida: ${brl(r.liquida)}`, `Receita líquida sem frete: ${brl(r.liquida - r.frete)}`].join("\n");
+}
+async function csvContador(){
+  const [de, ate] = faixaRecorte(), dentro = d => !!d && d >= de && d <= ate;
+  const n2 = n => (Math.round(num(n)*100)/100).toString().replace(".", ",");
+  const linhas = [["Data","Pedido","Cliente","Situação","Cancelado em","Forma de pagamento","Valor das peças","Frete cobrado","Desconto cupom","Cupom","Desconto Pix/forma de pagamento","Outros descontos","Total do pedido"]];
+  const gs = agrupaPedidos(S.vendas.filter(v => (dentro(v.data) && foiVendaPaga(v)) || (v.status === "Cancelado" && v.foiPago !== false && v.nuvemshopId && dentro(v.canceladoEm || v.data))));
+  gs.sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"")).forEach(g => {
+    const c = g.ls.reduce((a,v)=>a+num(v.descontoCupom),0), pg = g.ls.reduce((a,v)=>a+num(v.descontoPagamento),0);
+    const sit = g.f.status === "Cancelado" ? "Cancelado/estornado" : ehTroca(g.f) ? (g.f.tipo === "troca" ? "Troca" : "Devolução") : "Venda";
+    linhas.push([dBR(g.f.data), g.f.pedido, g.f.cliente, sit, g.f.canceladoEm ? dBR(g.f.canceladoEm) : "", g.f.formaPagamento || "", n2(g.pecas), n2(g.frete), n2(c), g.f.cupom || "", n2(pg), n2(Math.max(0, g.desconto - c - pg)), n2(g.total)]);
+  });
+  const csv = "﻿" + linhas.map(l => l.map(x => `"${String(x ?? "").replace(/"/g,'""')}"`).join(";")).join("\r\n");
+  const dl = await window.claude?.use?.("downloads"); if(!dl){ toast("Download indisponível"); return; }
+  try{ await dl.save({filename: `seille-contador-${de}-a-${ate}.csv`, data: new TextEncoder().encode(csv)}); }catch(e){ if(e?.code !== "declined") toast("Não foi possível baixar"); }
+}
+// uma vez: busca de novo todas as vendas para trazer o detalhe dos descontos e os cancelados depois de pagos
+let sincDetalhe = false;
+async function sincronizarDetalhe(){
+  if(sincDetalhe || !window.seilleNuvem || S.config.detalheDescontos) return;
+  const desde = S.vendas.filter(v => v.nuvemshopId).map(v => v.data).filter(Boolean).sort()[0]; if(!desde) return;
+  sincDetalhe = true; render();
+  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: today()}); toast("Detalhe dos descontos atualizado"); }
+  catch(e){ toast("A busca não terminou. Toque em Buscar agora para tentar de novo."); }
+  sincDetalhe = false; render();
 }
 function vTrafego(){
   const P = periodo(), A = anoTodo(), ano = MES.slice(0,4), rot = rotuloRecorte();
@@ -2256,7 +2346,7 @@ function vColecoes(){
   ${cols.length ? `<div class="cgrid">${cards}</div>${det}` : `<div class="panel empty"><b>Nenhuma coleção cadastrada</b>Crie a primeira coleção para planejar o orçamento do lançamento e lançar os custos do ensaio.</div>`}
   <p class="sub">Para não contar duas vezes, lance fotos, modelos e demais custos de ensaio só aqui, e não em Custos do mês.</p>`;
 }
-const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, contas:vContas, ajustes:vAjustes};
+const RENDER = {painel:vPainel, leitor:vLeitor, pedidos:vPedidos, pecas:vPecas, custos:vCustos, funcionarias:vFuncionarias, colecoes:vColecoes, trafego:vTrafego, impostos:vImpostos, contas:vContas, contador:vContador, ajustes:vAjustes};
 // Cadastros iniciais (uma vez só) de custos fixos combinados com a Seille.
 // Código fixo para nunca duplicar, e marcação no config para não recriar se for apagado depois.
 const CADASTROS_INICIAIS = [
@@ -2275,7 +2365,7 @@ async function semearGestao(){
     if(feitos.length){ await S.db.doc("config/geral").set({...S.config, ...marcas}); toast("Custo fixo cadastrado: " + feitos.join(" e ")); }
   }catch(e){ console.error("cadastro inicial", e); } // tenta de novo só na próxima abertura do app
 }
-const GRUPO_CUSTOS = [["custos","Visão geral"],["contas","Contas a pagar"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["colecoes","Coleções"]];
+const GRUPO_CUSTOS = [["custos","Visão geral"],["contas","Contas a pagar"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["contador","Contador"],["colecoes","Coleções"]];
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
@@ -2340,6 +2430,9 @@ document.addEventListener("click", e => {
   const cli = e.target.closest("[data-cliente]"); if(cli){ PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
   const mi = e.target.closest("[data-maisind]"); if(mi){ e.preventDefault(); maisInd = !maisInd; render(); return; }
   const dr = e.target.closest("[data-dre]"); if(dr){ e.preventDefault(); dreAberto = !dreAberto; render(); return; }
+  if(e.target.closest("[data-sincdetalhe]")){ sincronizarDetalhe(); return; }
+  if(e.target.closest("[data-csvcontador]")){ csvContador(); return; }
+  if(e.target.closest("[data-copiacontador]")){ const t = textoContador(); (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast("Resumo copiado. É só colar no WhatsApp ou no e-mail."), () => { window.prompt("Copie o resumo:", t); }); return; }
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
@@ -2414,7 +2507,7 @@ $("#atualizar").onclick = () => {
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
-  setTimeout(() => conferirAbertos(false), 6000);
+  setTimeout(() => { if(!S.config.detalheDescontos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {
