@@ -6,7 +6,11 @@
 //                            que o app não consegue ler) e cadastra os avisos automáticos de pedido.
 //  - /nuvemshop/webhook    → a Nuvemshop chama este endereço a cada pedido pago, alterado, enviado ou cancelado.
 //                            A assinatura do aviso é conferida antes de qualquer coisa.
-//  - POST { acao }         → chamado pelo app, só por membros logados: "status", "conectar", "sincronizar", "desconectar".
+//  - POST { acao }         → chamado pelo app, só por membros logados: "status", "conectar", "sincronizar", "desconectar",
+//                            e as notificações no celular: "push-chave", "push-assinar", "push-cancelar", "push-teste".
+//  - Notificações: a cada venda nova que chega pelo aviso da Nuvemshop, manda uma notificação para os celulares
+//    que ativaram em Ajustes. As chaves e a lista de celulares ficam na tabela "integracoes" (nome "push"),
+//    criadas sozinhas na primeira vez; não precisa configurar nada.
 //
 // Segredos necessários (Supabase → Edge Functions → Secrets):
 //  NUVEMSHOP_CLIENT_ID      ID do aplicativo criado no portal de parceiros da Nuvemshop
@@ -16,6 +20,7 @@
 // Ao publicar a função, DESLIGUE "Verify JWT" (Enforce JWT verification): a Nuvemshop não tem login no Supabase.
 // A função confere sozinha quem é membro.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import webpush from "npm:web-push@3.6.7";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 // Chave de servidor: formato antigo (service_role) ou novo (SUPABASE_SECRET_KEYS, um JSON com as chaves secretas)
@@ -61,6 +66,45 @@ async function salvar(d: Dados) {
   const { error } = await admin.from("integracoes").upsert({ nome: "nuvemshop", dados: d, atualizado_em: new Date().toISOString() });
   if (error) throw error;
 }
+
+// ---------- notificações no celular (Web Push) ----------
+type Assinatura = { endpoint: string; keys: { p256dh: string; auth: string }; criadoEm?: string };
+type Push = { publica?: string; privada?: string; assinaturas?: Assinatura[] };
+async function lerPush(): Promise<Push> {
+  const { data } = await admin.from("integracoes").select("dados").eq("nome", "push").maybeSingle();
+  return (data?.dados ?? {}) as Push;
+}
+async function salvarPush(p: Push) {
+  const { error } = await admin.from("integracoes").upsert({ nome: "push", dados: p, atualizado_em: new Date().toISOString() });
+  if (error) throw error;
+}
+async function chavesPush(): Promise<Push> {
+  const p = await lerPush();
+  if (p.publica && p.privada) return p;
+  const k = webpush.generateVAPIDKeys();
+  const novo = { ...p, publica: k.publicKey, privada: k.privateKey };
+  await salvarPush(novo);
+  return novo;
+}
+async function avisar(title: string, body: string, url = "./", tag = "") {
+  const p = await lerPush();
+  const subs = p.assinaturas ?? [];
+  if (!subs.length || !p.publica || !p.privada) return { enviadas: 0, celulares: 0 };
+  webpush.setVapidDetails("mailto:app@seille.com.br", p.publica, p.privada);
+  const payload = JSON.stringify({ title, body, url, tag });
+  const mortas = new Set<string>(); let enviadas = 0;
+  await Promise.all(subs.map(async (s) => {
+    try { await webpush.sendNotification(s, payload, { TTL: 86400, urgency: "high" }); enviadas++; }
+    catch (e: any) {
+      if ([404, 410].includes(e?.statusCode)) mortas.add(s.endpoint); // celular desativou ou o app foi removido
+      else console.error("push", e?.statusCode, e?.body ?? String(e));
+    }
+  }));
+  if (mortas.size) { const atual = await lerPush(); await salvarPush({ ...atual, assinaturas: (atual.assinaturas ?? []).filter((s) => !mortas.has(s.endpoint)) }); }
+  return { enviadas, celulares: subs.length };
+}
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+type Novo = { id: string; pedido: string; cliente: string; total: number; pecas: number; pagoEm: string };
 
 // ---------- chamadas à Nuvemshop ----------
 async function ns(d: Dados, caminho: string, init: RequestInit = {}) {
@@ -120,9 +164,9 @@ function camposPagamento(o: any): string[] {
   return [...out].sort();
 }
 
-type Contagem = { importados: number; aguardando: number; cancelados: number; comTaxas: number; campos: string[] };
+type Contagem = { importados: number; aguardando: number; cancelados: number; comTaxas: number; campos: string[]; novos: Novo[] };
 async function importar(pedidos: any[]): Promise<Contagem> {
-  const cont: Contagem = { importados: 0, aguardando: 0, cancelados: 0, comTaxas: 0, campos: camposPagamento(pedidos[0]) };
+  const cont: Contagem = { importados: 0, aguardando: 0, cancelados: 0, comTaxas: 0, campos: camposPagamento(pedidos[0]), novos: [] };
   if (!pedidos.length) return cont;
   const { data: prods } = await admin.from("docs").select("id,data").eq("col", "produtos");
   const produtos = (prods ?? []).map((r: any) => ({ id: r.id, ...r.data, chave: semAcento(r.data?.nome ?? "") }));
@@ -213,6 +257,10 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     });
     doPedido.forEach(([id]) => { const k = Number(id.split("-").pop()); if (k >= itens.length) apagar.push(id); });
     if (cancelado) cont.cancelados++; else cont.importados++;
+    if (!cancelado && !doPedido.length) { // venda que ainda não estava no app
+      cont.novos.push({ id: String(o.id), pedido: comum.pedido, cliente: comum.cliente, total: n(o.total),
+        pecas: itens.reduce((a, p) => a + (n(p.quantity) || 1), 0), pagoEm: o.paid_at || o.created_at || "" });
+    }
     if (taxasApi != null || jurosApi != null) cont.comTaxas++;
   }
   for (let i = 0; i < gravar.length; i += 200) {
@@ -315,7 +363,18 @@ Deno.serve(async (req) => {
     if (typeof ev.event === "string" && ev.event.startsWith("order/") && ev.id) {
       try {
         const r = await ns(d, `/orders/${ev.id}`);
-        if (r.ok) await importar([await r.json()]);
+        if (r.ok) {
+          const c = await importar([await r.json()]);
+          for (const v of c.novos) {
+            // só vendas recentes: um aviso atrasado de pedido antigo não vira notificação
+            if (v.pagoEm && Date.now() - new Date(v.pagoEm).getTime() > 2 * 86400_000) continue;
+            try {
+              await avisar(`Nova venda · ${BRL.format(v.total)}`,
+                `${v.cliente || "Cliente"} · pedido #${v.pedido} · ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"}`,
+                "./#pedidos", "venda-" + v.id);
+            } catch (e) { console.error("avisar", e); } // a venda já foi gravada; a notificação não pode travar o aviso
+          }
+        }
       } catch (e) { console.error(e); return new Response("erro", { status: 500 }); } // a Nuvemshop tenta de novo
     }
     return new Response("ok"); // inclui os avisos de LGPD (store/redact, customers/redact, customers/data_request)
@@ -353,6 +412,28 @@ Deno.serve(async (req) => {
       await salvar({ ...d, ultimo_erro: String(e).slice(0, 300) });
       return json({ code: "falha", message: String(e).slice(0, 300) }, 502);
     }
+  }
+  if (b.acao === "push-chave") {
+    const p = await chavesPush();
+    return json({ publica: p.publica });
+  }
+  if (b.acao === "push-assinar") {
+    const a = b.assinatura;
+    if (!a || typeof a.endpoint !== "string" || !/^https:\/\//.test(a.endpoint) || !a.keys?.p256dh || !a.keys?.auth) return json({ code: "invalid_argument" }, 400);
+    const p = await chavesPush();
+    const lista = (p.assinaturas ?? []).filter((s) => s.endpoint !== a.endpoint);
+    lista.push({ endpoint: a.endpoint, keys: { p256dh: String(a.keys.p256dh), auth: String(a.keys.auth) }, criadoEm: new Date().toISOString() });
+    await salvarPush({ ...p, assinaturas: lista });
+    return json({ ok: true, celulares: lista.length });
+  }
+  if (b.acao === "push-cancelar") {
+    const p = await lerPush();
+    await salvarPush({ ...p, assinaturas: (p.assinaturas ?? []).filter((s) => s.endpoint !== b.endpoint) });
+    return json({ ok: true });
+  }
+  if (b.acao === "push-teste") {
+    const r = await avisar("Notificações ligadas", "Você vai receber um aviso aqui a cada venda nova da loja.", "./#painel", "teste");
+    return json(r);
   }
   if (b.acao === "desconectar") {
     await salvar({});
