@@ -1109,15 +1109,15 @@ function vPainel(){
       <span class="s cmp">${cmp.temAnt ? vsAnt(ca.receita, cp.receita) : `Sem vendas no app de ${cmp.rot} para comparar`}</span>
       ${proj ? `<span class="s">projeção ${A ? "do ano" : "do mês"}: <b>${brl(proj)}</b>${meta ? " (" + pct(proj/meta,0) + " da meta)" : ""}</span>` : ""}
       ${meta?`<div class="meter"><i style="width:${Math.min(100,c.receita/meta*100)}%"></i></div>`:""}</div>
-    <div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
     <div class="kpi kclick" data-ir="pedidos"><span class="l">Pedidos ›</span><span class="v num">${c.nPed}</span><span class="s">${intf(c.pecas)} peças · ticket médio ${brl(c.ticket)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.nPed, cp.nPed)} pedidos (${cp.nPed} em ${cmp.rot}) · ticket ${cmp.varia(ca.ticket, cp.ticket)}</span>` : ""}</div>
-    <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    ${cardCupons()}
   </div>
   <details class="maisind"${maisInd ? " open" : ""}><summary data-maisind>${maisInd ? "Menos indicadores ▴" : "Ver mais indicadores ▾"}</summary>
   <div class="kpis kpis4">
+    <div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
+    <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
     <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
-    ${cardCupons()}
   </div></details>
   <details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
       <table class="dre"><tbody>
