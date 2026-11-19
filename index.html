@@ -139,6 +139,12 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.itemfoto{display:flex;align-items:center;gap:12px}
+.foto{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;background:var(--raised)}
+.foto.vazia{display:inline-block}
+.avfotos{position:relative;width:52px;height:52px}
+.avfotos img{position:absolute;inset:0;width:52px;height:52px;border-radius:14px;object-fit:cover;border:2px solid var(--surface);background:var(--raised)}
+.avfotos img+img{width:30px;height:30px;inset:auto -6px -6px auto;border-radius:9px}
 .kpis.kpis4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (max-width:860px){.kpis.kpis4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 details.maisind>summary{list-style:none;cursor:pointer;color:var(--ink2);font-weight:600;padding:2px 2px 10px}
@@ -1215,7 +1221,7 @@ function vPedidos(){
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
-    <div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>
+    ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => `<img src="${esc(u)}" alt="" loading="lazy">`).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
       <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
       <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
@@ -1518,8 +1524,8 @@ function openPedido(k){
       ${!g.real && f.nuvemshopId && !f.taxaManual ? `<p class="sub" id="taxaAviso" style="margin:4px 0 0"><span class="spin"></span>Buscando as taxas e os juros reais na Nuvemshop…</p>` : ""}
       <p class="sub" style="margin:4px 0 0">${[f.cliente, dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – "), f.pagamento, f.parcelas ? f.parcelas + "x" : "", f.canal].filter(Boolean).map(esc).join(" · ")}</p></div>
     <div class="tw"><table>
-      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n">Custo</th></tr></thead>
-      <tbody>${g.ls.map(v => `<tr class="click" data-item="${esc(v.id)}"><td>${esc(nomePeca(v))}${v.produtoId ? "" : ` <span class="pill warn">sem ficha técnica</span>`}</td><td class="n">${num(v.qtd)}</td><td class="n">${brl(num(v.precoUnit)*num(v.qtd))}</td><td class="n">${brl(num(v.custoUnit)*num(v.qtd))}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n hide-m">Custo</th></tr></thead>
+      <tbody>${g.ls.map(v => `<tr class="click" data-item="${esc(v.id)}"><td><div class="itemfoto">${/^https:\/\//.test(v.imagem||"") ? `<img class="foto" src="${esc(v.imagem)}" alt="" loading="lazy">` : `<span class="foto vazia"></span>`}<div>${esc(nomePeca(v))}${v.produtoId ? "" : `<div><span class="pill warn">sem ficha técnica</span></div>`}</div></div></td><td class="n">${num(v.qtd)}</td><td class="n">${brl(num(v.precoUnit)*num(v.qtd))}</td><td class="n hide-m">${brl(num(v.custoUnit)*num(v.qtd))}</td></tr>`).join("")}</tbody>
     </table></div>
     <table class="dre"><tbody>
       ${L(`Valor das peças (${g.qtd} ${g.qtd===1?"unidade":"unidades"})`, g.pecas)}
@@ -1879,10 +1885,10 @@ async function csvContador(){
 // uma vez: busca de novo todas as vendas para trazer o detalhe dos descontos e os cancelados depois de pagos
 let sincDetalhe = false;
 async function sincronizarDetalhe(){
-  if(sincDetalhe || !window.seilleNuvem || S.config.detalheDescontos) return;
+  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos)) return;
   const desde = S.vendas.filter(v => v.nuvemshopId).map(v => v.data).filter(Boolean).sort()[0]; if(!desde) return;
   sincDetalhe = true; render();
-  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: today()}); toast("Detalhe dos descontos atualizado"); }
+  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: today()}); toast("Pedidos atualizados com os detalhes e as fotos"); }
   catch(e){ toast("A busca não terminou. Toque em Buscar agora para tentar de novo."); }
   sincDetalhe = false; render();
 }
@@ -2886,7 +2892,7 @@ $("#atualizar").onclick = () => {
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
-  setTimeout(() => { if(!S.config.detalheDescontos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
+  setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {

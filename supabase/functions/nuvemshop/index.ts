@@ -156,6 +156,9 @@ async function anexarTaxas(d: Dados, ped: any) {
   } catch { /* segue sem as taxas */ }
 }
 
+// Foto do produto vendido (endereço público da imagem na Nuvemshop); só aceita https
+const fotoDe = (p: any) => { const u = String(p?.image?.src ?? p?.image ?? "").trim(); return /^https:\/\//.test(u) ? u : ""; };
+
 // ---------- conversão de pedido da Nuvemshop em linhas de "vendas" do app ----------
 const UF: Record<string, string> = {
   "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA", "ceara": "CE", "distrito federal": "DF",
@@ -279,6 +282,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         produtoId: antes?.produtoId || prod?.id || "",
         produtoNome: antes?.produtoId ? antes.produtoNome : (prod?.nome ?? nomeProduto(p)),
         tamanho: variante(p), qtd: n(p.quantity) || 1, precoUnit: r2(n(p.price)),
+        ...(fotoDe(p) ? { imagem: fotoDe(p) } : {}),
         desconto: descDe(p, i), freteCobrado: i === 0 ? freteCobrado : 0,
         fretePago: antes ? n(antes.fretePago) : (i === 0 ? fretePago : 0),
         custoUnit: antes ? n(antes.custoUnit) : (prod ? r2(custoPeca(prod)) : 0),
