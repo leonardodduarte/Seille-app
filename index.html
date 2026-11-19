@@ -892,7 +892,7 @@ function niceStep(raw){ if(raw<=0) return 1000; const p = Math.pow(10, Math.floo
 const UF_NOME = {AC:"Acre",AL:"Alagoas",AP:"Amapá",AM:"Amazonas",BA:"Bahia",CE:"Ceará",DF:"Distrito Federal",ES:"Espírito Santo",GO:"Goiás",MA:"Maranhão",MT:"Mato Grosso",MS:"Mato Grosso do Sul",MG:"Minas Gerais",PA:"Pará",PB:"Paraíba",PR:"Paraná",PE:"Pernambuco",PI:"Piauí",RJ:"Rio de Janeiro",RN:"Rio Grande do Norte",RS:"Rio Grande do Sul",RO:"Rondônia",RR:"Roraima",SC:"Santa Catarina",SP:"São Paulo",SE:"Sergipe",TO:"Tocantins"};
 let REGP = "mes", REGUF = "", REGTODOS = false; // REGTODOS: mostra todos os estados (padrão: só os 5 primeiros)
 function painelEstados(){
-  const A = anoTodo() || !!periodo(), ano = MES.slice(0,4), noPeriodo = v => periodo() ? noRecorte(v.data) : (A || REGP === "ano") ? (v.data||"").startsWith(ano) : (v.data||"").slice(0,7) === MES;
+  const A = anoTodo() || !!periodo(), ano = MES.slice(0,4), noPeriodo = v => noRecorte(v.data); // segue o mês / ano / período escolhido em cima
   const gs = agrupaPedidos(S.vendas.filter(noPeriodo)).filter(g => !g.cancelado);
   const tot = gs.reduce((a,g)=>a+g.total,0);
   const m = {};
@@ -912,7 +912,7 @@ function painelEstados(){
         ${aberto ? `<div><button class="btn" data-pedidosuf="${esc(uf)}" style="margin-top:6px">Ver pedidos ${uf ? "de " + esc(uf) : "sem estado"} ›</button></div><div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
       </div></div>`; }).join("");
   return `<div class="panel" style="display:flex;flex-direction:column;gap:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos${periodo() ? " · " + rotuloRecorte() : A ? " em " + ano : ""}</h3>${A ? "" : `<div class="seg">${seg}</div>`}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">Onde mais vendemos · ${esc(rotuloRecorte())}</h3></div>
     ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div>${lista.length > 5 ? `<button class="btn" data-regtodos style="align-self:center">${REGTODOS ? "Mostrar só os 5 primeiros ▴" : `Ver os outros ${lista.length - 5} estados ▾`}</button>` : ""}`
       : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
   </div>`;
@@ -2241,7 +2241,7 @@ document.addEventListener("click", e => {
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
   const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
   const pc = e.target.closest("[data-peca]"); if(pc){ abrirPeca(pc.dataset.peca); return; }
-  const pu = e.target.closest("[data-pedidosuf]"); if(pu){ if(REGP === "ano" && !periodo()) ANO = true; PEDUF = pu.dataset.pedidosuf; PEDQ = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
+  const pu = e.target.closest("[data-pedidosuf]"); if(pu){ PEDUF = pu.dataset.pedidosuf; PEDQ = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-gestao]")){ openForm("fixos", null, {nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: MES}); return; }
   const ma = e.target.closest("[data-marcaant]"); if(ma && !ma.disabled){ marcarAntigos(ma); return; }
   if(e.target.closest("[data-regtodos]")){ REGTODOS = !REGTODOS; render(); return; }
