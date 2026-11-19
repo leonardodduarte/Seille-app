@@ -1669,6 +1669,8 @@ function vAjustes(){
     </div>
     <div class="mact"><button class="btn pri" type="submit">Salvar ajustes</button></div>
   </form>
+  <div class="seclbl">Notificações<span>neste celular</span></div>
+  <div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Aviso de venda nova</h3><div id="notif"><p class="sub" style="margin:0"><span class="spin"></span>Verificando…</p></div></div>
   <div class="seclbl">Conexões<span>Nuvemshop e planilha</span></div>
   ${painelNuvem()}
   ${painelPlanilha()}
@@ -1686,7 +1688,55 @@ function vAjustes(){
   </div>`;
 }
 
+// ---------- notificações de venda nova (Web Push) ----------
+const b64uBytes = s => { const b = atob((s + "=".repeat((4 - s.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+const notifSuportado = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const appInstalado = () => window.navigator.standalone === true || !!window.matchMedia?.("(display-mode: standalone)").matches;
+async function assinaturaAtual(){ try{ const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); }catch(_){ return null; } }
+async function montaNotif(){
+  const box = $("#notif"); if(!box) return;
+  const p = t => `<p class="sub" style="margin:0">${t}</p>`;
+  if(!notifSuportado()){
+    box.innerHTML = /iPhone|iPad/.test(navigator.userAgent) && !appInstalado()
+      ? p("Para receber notificações no iPhone, abra o app pelo ícone da Seille na tela de início e volte aqui.")
+      : p("Este navegador não recebe notificações. No iPhone, use o app instalado na tela de início (iOS 16.4 ou mais novo).");
+    return;
+  }
+  if(Notification.permission === "denied"){ box.innerHTML = p("As notificações estão bloqueadas para este app. Libere em Ajustes do iPhone → Notificações → Seille e volte aqui."); return; }
+  const sub = Notification.permission === "granted" ? await assinaturaAtual() : null;
+  box.innerHTML = sub
+    ? `${p("<b>Ligadas.</b> Este celular recebe um aviso a cada venda nova da loja.")}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" id="notiftest">Enviar notificação de teste</button><button class="btn" type="button" id="notifoff">Desligar</button></div>`
+    : `${p("Receba um aviso no celular a cada venda nova da loja, mesmo com o app fechado.")}<div style="margin-top:12px"><button class="btn pri" type="button" id="notifon">Ativar notificações</button></div>`;
+  const on = $("#notifon"), test = $("#notiftest"), off = $("#notifoff");
+  if(on) on.onclick = async () => {
+    on.disabled = true; on.innerHTML = `<span class="spin"></span>Ativando…`;
+    try{
+      const perm = await Notification.requestPermission(); // precisa vir logo no toque, antes de qualquer outra espera
+      if(perm !== "granted"){ toast("Sem permissão para notificar"); return montaNotif(); }
+      const reg = await navigator.serviceWorker.ready;
+      const {publica} = await window.seilleFuncao("nuvemshop", "push-chave");
+      const s = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64uBytes(publica)});
+      await window.seilleFuncao("nuvemshop", "push-assinar", {assinatura: s.toJSON()});
+      await window.seilleFuncao("nuvemshop", "push-teste").catch(() => {});
+      toast("Notificações ligadas");
+    }catch(e){ console.error(e); toast("Não foi possível ativar. Tente de novo."); }
+    montaNotif();
+  };
+  if(test) test.onclick = async () => {
+    test.disabled = true;
+    try{ await window.seilleFuncao("nuvemshop", "push-assinar", {assinatura: sub.toJSON()}); const r = await window.seilleFuncao("nuvemshop", "push-teste"); toast(r?.enviadas ? "Teste enviado" : "Nenhum celular recebeu. Desligue e ative de novo."); }
+    catch(e){ toast("Não foi possível enviar o teste"); }
+    test.disabled = false;
+  };
+  if(off) off.onclick = async () => {
+    off.disabled = true;
+    try{ await window.seilleFuncao("nuvemshop", "push-cancelar", {endpoint: sub.endpoint}).catch(() => {}); await sub.unsubscribe(); toast("Notificações desligadas"); }
+    catch(e){ toast("Não foi possível desligar"); }
+    montaNotif();
+  };
+}
 function bindAjustes(){
+  montaNotif();
   const form = $("#cfg"); if(!form) return;
   const pla = $("#plagora"); if(pla) pla.onclick = () => { pla.disabled = true; pla.innerHTML = `<span class="spin"></span>Lendo…`; lerPlanilha(true); };
   const ncon = $("#nsconectar");
