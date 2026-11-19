@@ -146,6 +146,16 @@ async function lerTransacoes(d: Dados, orderId: string) {
 const RE_TAXA_T = /(^|_)(fee|fees|gateway_fee|transaction_fee|payment_fee|processing_fee|commission|tax_amount|mdr)$/i;
 const RE_JUROS_T = /(^|_)(interest|interests|installment_interest|installments_interest|interest_amount|financing_cost|financing_fee)$/i;
 
+// Lê as transações do pedido e, se tiverem taxa/juros, anexa ao pedido para a importação usar
+async function anexarTaxas(d: Dados, ped: any) {
+  if (!ped?.id || !["paid", "authorized"].includes(ped.payment_status)) return;
+  try {
+    const t = await lerTransacoes(d, String(ped.id));
+    const taxa = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_TAXA_T) ?? 0), 0), juros = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_JUROS_T) ?? 0), 0);
+    if (taxa > 0 || juros > 0) { ped.__taxa = Math.round(taxa * 100) / 100; ped.__juros = Math.round(juros * 100) / 100; }
+  } catch { /* segue sem as taxas */ }
+}
+
 // ---------- conversão de pedido da Nuvemshop em linhas de "vendas" do app ----------
 const UF: Record<string, string> = {
   "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA", "ceara": "CE", "distrito federal": "DF",
@@ -235,7 +245,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
       if (i === itens.length - 1) return r2(descRestante);
       const d = subtotal ? r2(desconto * n(p.price) * n(p.quantity) / subtotal) : 0; descRestante = r2(descRestante - d); return d;
     };
-    const taxasApi = somaCampos(o, RE_TAXA), jurosApi = somaCampos(o, RE_JUROS);
+    const taxasApi = o.__taxa != null ? o.__taxa : somaCampos(o, RE_TAXA), jurosApi = o.__juros != null ? o.__juros : somaCampos(o, RE_JUROS);
     const parcelas = n(o.payment_details?.installments) || null;
     const cupom = (Array.isArray(o.coupon) ? o.coupon : []).map((c: any) => c?.code).filter(Boolean).join(", ");
     const end = o.shipping_address ?? {};
@@ -395,7 +405,9 @@ Deno.serve(async (req) => {
       try {
         const r = await ns(d, `/orders/${ev.id}`);
         if (r.ok) {
-          const c = await importar([await r.json()]);
+          const ped = await r.json();
+          await anexarTaxas(d, ped);
+          const c = await importar([ped]);
           for (const v of c.novos) {
             // só vendas recentes: um aviso atrasado de pedido antigo não vira notificação
             if (v.pagoEm && Date.now() - new Date(v.pagoEm).getTime() > 2 * 86400_000) continue;
@@ -480,6 +492,13 @@ Deno.serve(async (req) => {
       transacoes: { status: t.status, quantidade: t.lista.length, taxa: taxaT || null, juros: jurosT || null, campos: t.lista.flatMap((x: any) => caminhos(x)).slice(0, 80) } });
   }
   // Busca taxas e juros pelas transações, em lotes (o app chama de novo até terminar)
+  if (b.acao === "taxasPedido") {
+    if (!d.access_token || !b.id) return json({ code: "invalid_argument" }, 400);
+    const r = await ns(d, `/orders/${encodeURIComponent(String(b.id))}`);
+    if (!r.ok) return json({ code: "falha", status: r.status }, 502);
+    const ped = await r.json(); await anexarTaxas(d, ped); await importar([ped]);
+    return json({ taxa: ped.__taxa ?? null, juros: ped.__juros ?? null });
+  }
   if (b.acao === "taxas") {
     if (!d.access_token) return json({ code: "nao_conectado" }, 400);
     const base = () => admin.from("docs").select("id,data", { count: "exact" }).eq("col", "vendas").like("id", "ns-%-0")

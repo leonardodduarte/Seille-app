@@ -1487,15 +1487,26 @@ function openTaxasFretes(){
   $("#fcancel", modalEl).onclick = closeModal;
   modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
 }
+const taxasTentadas = new Set();
 function openPedido(k){
   const ls = S.vendas.filter(v => chavePed(v) === k); if(!ls.length) return;
   const g = resumoPed(k, ls), f = g.f;
+  // pedido ainda com taxa estimada: busca na hora as taxas e os juros reais do Nuvem Pago e reabre
+  if(!g.real && f.nuvemshopId && !f.taxaManual && f.status !== "Cancelado" && !taxasTentadas.has(k) && window.seilleNuvem){
+    taxasTentadas.add(k);
+    window.seilleNuvem.chamar("taxasPedido", {id: f.nuvemshopId}).then(r => {
+      if((r.taxa || r.juros) && modalEl && modalEl.dataset.ped === k) setTimeout(() => openPedido(k), 400);
+      else if(modalEl && modalEl.dataset.ped === k){ const a = modalEl.querySelector("#taxaAviso"); if(a) a.textContent = "A Nuvemshop não informou as taxas deste pedido; o app usa a estimativa."; }
+    }).catch(() => {});
+  }
   closeModal();
   modalEl = document.createElement("div"); modalEl.className = "ov";
   const L = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td></tr>`;
   const val = x => x == null ? "" : String(Math.round(num(x)*100)/100);
+  modalEl.dataset.ped = k;
   modalEl.innerHTML = `<form class="modal" novalidate>
     <div><h2>Pedido ${f.pedido ? "#" + esc(f.pedido) : ""}</h2>
+      ${!g.real && f.nuvemshopId && !f.taxaManual ? `<p class="sub" id="taxaAviso" style="margin:4px 0 0"><span class="spin"></span>Buscando as taxas e os juros reais na Nuvemshop…</p>` : ""}
       <p class="sub" style="margin:4px 0 0">${[f.cliente, dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – "), f.pagamento, f.parcelas ? f.parcelas + "x" : "", f.canal].filter(Boolean).map(esc).join(" · ")}</p></div>
     <div class="tw"><table>
       <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n">Custo</th></tr></thead>
