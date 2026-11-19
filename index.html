@@ -1812,8 +1812,21 @@ function vContador(){
   ${r.trocas.length ? `<div class="panel"><h3>Trocas e devoluções</h3><div class="tw"><table><thead><tr><th>Pedido</th><th>Data</th><th>Tipo</th><th class="n">Valor</th></tr></thead><tbody>
     ${r.trocas.map(g => `<tr class="click" data-ped="${esc(g.k)}"><td>#${esc(g.f.pedido)}<div class="sub">${esc(g.f.cliente||"")}</div></td><td>${dBR(g.f.data)}</td><td>${g.f.tipo === "troca" ? "Troca" : "Devolução"}</td><td class="n">${brl(g.total)}</td></tr>`).join("")}
   </tbody></table></div></div>` : ""}
+  ${painelFormas(r.vendidos)}
   ${painelParcelado(r.vendidos)}
   <p class="sub">Trocas e devoluções são marcadas abrindo o pedido em Pedidos (campo Tipo de pedido). Cancelamentos e estornos vêm da Nuvemshop.</p>`;
+}
+// Cartão × Pix: quantas compras em cada forma e quanto ficou com a operadora (taxas + juros reais)
+function painelFormas(gs){
+  const vs = gs.filter(g => g.f.status !== "Cancelado");
+  const forma = g => /pix/i.test(g.f.formaPagamento || "") ? "Pix" : (/cr[eé]dito/i.test(g.f.formaPagamento || "") || num(g.f.parcelas) > 1) ? "Cartão de crédito" : nomeForma(g.f.formaPagamento);
+  const m = {}; vs.forEach(g => (m[forma(g)] ||= []).push(g));
+  const linhas = Object.entries(m).sort((a,b) => b[1].length - a[1].length).map(([k,l]) => {
+    const reais = l.filter(g => g.real), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0), vr = reais.reduce((a,g)=>a+g.total,0);
+    return `<tr><td><b>${esc(k)}</b></td><td class="n">${l.length}</td><td class="n">${brl(l.reduce((a,g)=>a+g.total,0))}</td><td class="n">${reais.length ? brl(tx) : "—"}</td><td class="n">${reais.length ? brl(ju) : "—"}</td><td class="n"><b>${reais.length ? brl(tx+ju) : "—"}</b>${vr ? `<div class="sub">${pct((tx+ju)/vr,2)}</div>` : ""}</td><td class="n hide-m">${reais.length}/${l.length}</td></tr>`; }).join("");
+  return `<div class="panel"><h3>Cartão × Pix: quanto ficou com a operadora</h3>
+    <p class="sub" style="margin:0 0 10px">Taxas e juros reais cobrados pelo Nuvem Pago em cada forma de pagamento. Os que ainda não têm o valor real ficam de fora da soma (coluna "Com valor real"). Para buscar: Ajustes → Loja Nuvemshop → Buscar taxas e juros.</p>
+    <div class="tw"><table><thead><tr><th>Forma</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Perdido</th><th class="n hide-m">Com valor real</th></tr></thead><tbody>${linhas || emptyRow(7, "Sem vendas no período", "")}</tbody></table></div></div>`;
 }
 // Cartão de crédito: quanto custou (taxa + juros) cada número de parcelas, só com os valores reais informados pela loja
 function painelParcelado(gs){
@@ -1959,6 +1972,32 @@ function painelPlanilha(){
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Planilha de planejamento</h3>${corpo}
     <div><button class="btn" id="plagora" ${planilhaLendo ? "disabled" : ""}>Atualizar agora</button></div></div>`;
 }
+// Taxas e juros reais: diagnóstico e busca em lotes pelas transações do Nuvem Pago
+let taxasMsg = "", buscandoTaxas = false;
+async function diagnosticoTaxas(){
+  taxasMsg = `<span class="spin"></span>Abrindo um pedido no cartão na Nuvemshop…`; render();
+  try{
+    const r = await window.seilleNuvem.chamar("diagnostico");
+    const t = r.transacoes || {}, n = r.noPedido || {};
+    taxasMsg = (t.taxa || t.juros || n.taxa || n.juros)
+      ? `✅ Pedido #${esc(r.pedido)} (${esc(r.metodo || "")}${r.parcelas ? ", " + esc(r.parcelas) + "x" : ""}): taxas <b>${brl(t.taxa || n.taxa || 0)}</b> · juros <b>${brl(t.juros || n.juros || 0)}</b>. Dá para buscar de todos os pedidos.`
+      : `⚠️ Pedido #${esc(r.pedido)}: a Nuvemshop não mandou taxas nem juros (transações: ${t.status === 200 ? t.quantidade + " encontradas" : "acesso " + esc(t.status)}).<details><summary>Campos recebidos</summary><span class="sub" style="word-break:break-word">${esc([...(n.campos||[]), ...(t.campos||[]).map(c => "transação." + c)].join(" · "))}</span></details>`;
+  }catch(e){ taxasMsg = "Não foi possível verificar agora" + (e?.status ? " (erro " + e.status + ")" : "") + "."; }
+  render();
+}
+async function buscarTaxas(){
+  if(buscandoTaxas) return; buscandoTaxas = true; let total = 0, comValor = 0; taxasMsg = "Começando…"; render();
+  try{
+    for(let i = 0; i < 200; i++){
+      const r = await window.seilleNuvem.chamar("taxas");
+      total += r.processados; comValor += r.comValor;
+      taxasMsg = `${total} pedidos verificados · <b>${comValor}</b> com taxas/juros encontrados · faltam ${r.restantes}`; render();
+      if(!r.restantes || !r.processados) break;
+    }
+    taxasMsg += comValor ? " · ✅ concluído" : " · a Nuvemshop não informou taxas e juros desses pedidos";
+  }catch(e){ taxasMsg += " · parou por erro; toque de novo para continuar de onde parou"; }
+  buscandoTaxas = false; render();
+}
 S.nuvem = null; let nuvemCarregando = false;
 async function carregaNuvem(){
   if(nuvemCarregando || !window.seilleNuvem) return; nuvemCarregando = true;
@@ -1982,7 +2021,11 @@ function painelNuvem(){
     ${n.ultimaBusca ? `<div class="note">Última busca (${dt(n.ultimaBusca.quando)}, pedidos desde ${dBR(n.ultimaBusca.desde)}): <b>${n.ultimaBusca.encontrados}</b> encontrados na loja · <b>${n.ultimaBusca.importados}</b> pagos importados${n.ultimaBusca.aguardando ? ` · ${n.ultimaBusca.aguardando} aguardando pagamento (não entram)` : ""}${n.ultimaBusca.cancelados ? ` · ${n.ultimaBusca.cancelados} cancelados` : ""}.${n.ultimaBusca.campos ? ` Taxas e juros vieram da loja em <b>${n.ultimaBusca.comTaxas||0}</b> ${n.ultimaBusca.comTaxas===1?"pedido":"pedidos"}${n.ultimaBusca.comTaxas ? "" : " (a loja não enviou esses valores; o app usa a estimativa e você pode digitar o valor real no pedido)"}.` : ""}</div>
     ${n.ultimaBusca.campos?.length ? `<details class="sub"><summary>Campos de pagamento enviados pela loja</summary><p style="word-break:break-word">${esc(n.ultimaBusca.campos.join(" · "))}</p></details>` : ""}` : ""}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="date" id="nsdesde" value="${MES.slice(0,4)}-01-01" class="flt" style="border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--surface)">
-      <button class="btn pri" id="nssync">Buscar pedidos</button><button class="btn danger" id="nsdesc">Desconectar</button></div>`;
+      <button class="btn pri" id="nssync">Buscar pedidos</button><button class="btn danger" id="nsdesc">Desconectar</button></div>
+    <div class="note" style="display:flex;flex-direction:column;gap:8px"><b>Taxas e juros do cartão e do Pix</b>
+      <span class="sub">Busca, pedido a pedido, as taxas e os juros que o Nuvem Pago cobrou (como aparecem em Pagamento no pedido da Nuvemshop).</span>
+      ${taxasMsg ? `<span>${taxasMsg}</span>` : ""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-diagtaxas>Verificar</button><button class="btn pri" data-buscataxas ${buscandoTaxas ? "disabled" : ""}>${buscandoTaxas ? `<span class="spin"></span>Buscando…` : "Buscar taxas e juros de todos os pedidos"}</button></div></div>`;
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Loja Nuvemshop</h3>${corpo}</div>`;
 }
 function vAjustes(){
@@ -2749,6 +2792,8 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-sincdetalhe]")){ sincronizarDetalhe(); return; }
   if(e.target.closest("[data-csvcontador]")){ csvContador(); return; }
   if(e.target.closest("[data-copiacontador]")){ const t = textoContador(); (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast("Resumo copiado. É só colar no WhatsApp ou no e-mail."), () => { window.prompt("Copie o resumo:", t); }); return; }
+  if(e.target.closest("[data-diagtaxas]")){ diagnosticoTaxas(); return; }
+  const bt = e.target.closest("[data-buscataxas]"); if(bt && !bt.disabled){ buscarTaxas(); return; }
   if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }

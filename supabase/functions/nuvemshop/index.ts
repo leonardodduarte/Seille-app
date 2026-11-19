@@ -115,6 +115,37 @@ async function ns(d: Dados, caminho: string, init: RequestInit = {}) {
   return r;
 }
 
+// ---------- taxas e juros pelo registro de transações do pedido (Nuvem Pago) ----------
+// Procura em profundidade campos de taxa e de juros (só números; nada pessoal é guardado)
+function somaProfunda(obj: any, re: RegExp, nivel = 0): number | null {
+  if (!obj || typeof obj !== "object" || nivel > 5) return null;
+  let tot = 0, achou = false;
+  for (const [k, v] of Object.entries(obj)) {
+    if (re.test(k) && (typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim())))) { tot += Math.abs(Number(v)); achou = true; }
+    else if (re.test(k) && v && typeof v === "object" && ((v as any).value != null || (v as any).amount != null)) { tot += Math.abs(Number((v as any).value ?? (v as any).amount) || 0); achou = true; }
+    else if (v && typeof v === "object") { const x = somaProfunda(v, re, nivel + 1); if (x != null) { tot += x; achou = true; } }
+  }
+  return achou ? Math.round(tot * 100) / 100 : null;
+}
+function caminhos(obj: any, pre = "", nivel = 0, out: string[] = []): string[] {
+  if (!obj || typeof obj !== "object" || nivel > 5 || out.length > 120) return out;
+  for (const [k, v] of Object.entries(obj)) {
+    const c = pre ? pre + "." + k : k;
+    if (v && typeof v === "object") caminhos(v, c, nivel + 1, out);
+    else if (/fee|tax|interest|juro|install|parcel|net|amount|total|discount|gateway|method|value/i.test(k)) out.push(c + (typeof v === "number" || /^-?\d+(\.\d+)?$/.test(String(v)) ? "=" + v : ""));
+  }
+  return out;
+}
+async function lerTransacoes(d: Dados, orderId: string) {
+  const r = await ns(d, `/orders/${orderId}/transactions`);
+  if (!r.ok) return { status: r.status, lista: [] as any[] };
+  const j = await r.json().catch(() => null);
+  const lista = Array.isArray(j) ? j : Array.isArray(j?.transactions) ? j.transactions : j ? [j] : [];
+  return { status: r.status, lista };
+}
+const RE_TAXA_T = /(^|_)(fee|fees|gateway_fee|transaction_fee|payment_fee|processing_fee|commission|tax_amount|mdr)$/i;
+const RE_JUROS_T = /(^|_)(interest|interests|installment_interest|installments_interest|interest_amount|financing_cost|financing_fee)$/i;
+
 // ---------- conversão de pedido da Nuvemshop em linhas de "vendas" do app ----------
 const UF: Record<string, string> = {
   "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA", "ceara": "CE", "distrito federal": "DF",
@@ -434,6 +465,38 @@ Deno.serve(async (req) => {
   if (b.acao === "push-teste") {
     const r = await avisar("Notificações ligadas", "Você vai receber um aviso aqui a cada venda nova da loja.", "./#painel", "teste");
     return json(r);
+  }
+  // Abre um pedido recente no cartão e mostra onde (e se) a Nuvemshop informa taxas e juros
+  if (b.acao === "diagnostico") {
+    if (!d.access_token) return json({ code: "nao_conectado" }, 400);
+    const r = await ns(d, `/orders?per_page=50&status=any`);
+    const lista: any[] = r.ok ? await r.json() : [];
+    const cartao = lista.find((o) => /credit|card/i.test(String(o.payment_details?.method ?? "")) && ["paid","authorized"].includes(o.payment_status)) ?? lista[0];
+    if (!cartao) return json({ code: "sem_pedidos", status: r.status });
+    const t = await lerTransacoes(d, String(cartao.id));
+    const taxaT = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_TAXA_T) ?? 0), 0), jurosT = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_JUROS_T) ?? 0), 0);
+    return json({ pedido: cartao.number, metodo: cartao.payment_details?.method ?? null, parcelas: cartao.payment_details?.installments ?? null, total: cartao.total,
+      noPedido: { taxa: somaProfunda(cartao, RE_TAXA_T), juros: somaProfunda(cartao, RE_JUROS_T), campos: caminhos(cartao).slice(0, 80) },
+      transacoes: { status: t.status, quantidade: t.lista.length, taxa: taxaT || null, juros: jurosT || null, campos: t.lista.flatMap((x: any) => caminhos(x)).slice(0, 80) } });
+  }
+  // Busca taxas e juros pelas transações, em lotes (o app chama de novo até terminar)
+  if (b.acao === "taxas") {
+    if (!d.access_token) return json({ code: "nao_conectado" }, 400);
+    const base = () => admin.from("docs").select("id,data", { count: "exact" }).eq("col", "vendas").like("id", "ns-%-0")
+      .filter("data->>taxasPagas", "is", null).filter("data->>taxaBuscada", "is", null).neq("data->>status", "Cancelado");
+    const { data: linhas, count } = await base().order("id").limit(80);
+    let comValor = 0, processados = 0; const inicio = Date.now();
+    for (const l of linhas ?? []) {
+      if (Date.now() - inicio > 100_000) break;
+      const v = l.data as any, t = await lerTransacoes(d, String(v.nuvemshopId));
+      const taxa = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_TAXA_T) ?? 0), 0), juros = t.lista.reduce((a: number, x: any) => a + (somaProfunda(x, RE_JUROS_T) ?? 0), 0);
+      const novo = { ...v, taxaBuscada: true };
+      if (taxa > 0 || juros > 0) { novo.taxasPagas = Math.round(taxa * 100) / 100; novo.jurosPagos = Math.round(juros * 100) / 100; comValor++; }
+      await admin.from("docs").upsert({ col: "vendas", id: l.id, data: novo, updated_at: new Date().toISOString() }, { onConflict: "col,id" });
+      processados++;
+      if (t.status === 401 || t.status === 403 || t.status === 404 && processados === 1) { /* transações não liberadas para este app */ }
+    }
+    return json({ processados, comValor, restantes: Math.max(0, (count ?? 0) - processados) });
   }
   if (b.acao === "desconectar") {
     await salvar({});
