@@ -1106,10 +1106,9 @@ function vPedidos(){
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   ${PED_ROTULO[PEDF] ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Mostrando <b>${PED_ROTULO[PEDF].toLowerCase()}</b>, de todas as datas.</span><button class="btn" data-pedf="todos">Ver todos ›</button></div>` : ""}
+  ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
   <div class="filtros">
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
-    <select class="flt" id="peduf" aria-label="Estado"><option value="">Todos os estados</option>${ufs.map(u=>`<option${u===PEDUF?" selected":""}>${esc(u)}</option>`).join("")}</select>
-    <select class="flt" id="pedcup" aria-label="Cupom"><option value="">Com e sem cupom</option><option value="__com"${PEDCUP==="__com"?" selected":""}>Com cupom</option><option value="__sem"${PEDCUP==="__sem"?" selected":""}>Sem cupom</option>${cups.map(c=>`<option${c===PEDCUP?" selected":""}>${esc(c)}</option>`).join("")}</select>
   </div>
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
   ${gs.length ? `<div class="olist">${gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
@@ -2229,6 +2228,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-conferir]")){ conferirAbertos(true); return; }
   const cpi = e.target.closest("[data-cupir]"); if(cpi){ closeModal(); PEDCUP = cpi.dataset.cupir; PEDQ = ""; PEDUF = ""; PEDF = "todos"; PEDLIM = 100; if(location.hash === "#pedidos") render(); else location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
+  if(e.target.closest("[data-limpaf]")){ PEDUF = ""; PEDCUP = ""; PEDLIM = 100; render(); return; }
   const cpf = e.target.closest("[data-cupf]"); if(cpf){ PEDCUP = cpf.dataset.cupf; PEDLIM = 100; render(); return; }
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
