@@ -1250,6 +1250,27 @@ function cardConversao(c, cmp){
   const varpp = pp == null ? "" : `<span class="var ${pp >= 0 ? "up" : "down"}">${pp >= 0 ? "+" : "−"}${Math.abs(pp).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})} p.p.</span> vs. ${pct(ca, 2)} em ${cmp.rot}`;
   return `<div class="kpi kclick" data-trafconv role="button" tabindex="0"><span class="l">Conversão do site ›</span><span class="v num">${pct(conv, 2)}</span><span class="s">${intf(sess)} visitas · ${c.nPed} ${c.nPed===1?"pedido":"pedidos"}</span>${varpp ? `<span class="s cmp">${varpp}</span>` : `<span class="s cmp">Sem visitas de ${cmp.rot} na planilha para comparar</span>`}</div>`;
 }
+// Quanto custa cada venda: só anúncios x anúncios + gestão, com o mesmo período do ano anterior
+function painelCustoVenda(){
+  const cmp = comparaAnoAnterior(), a = cmp.atual, b = cmp.ant, anoB = cmp.RA.de.slice(0,4);
+  const div = (x, y) => y ? x / y : NaN, xx = v => isFinite(v) ? v.toLocaleString("pt-BR",{maximumFractionDigits:1}) + "×" : "—";
+  const ga = a.gestao || 0, gb = b.gestao || 0;
+  const bloco = (titulo, invA, invB, extra) => {
+    const pa = div(invA, a.nPed), pb = div(invB, b.nPed), fa = div(invA, a.receita), fb = div(invB, b.receita);
+    return `<div class="kpi"><span class="l">${titulo}</span><span class="v num">${isFinite(pa) ? brl(pa) : "—"}</span><span class="s">por pedido · ${brl(invA)} ÷ ${a.nPed} ${a.nPed===1?"pedido":"pedidos"}</span>${extra || ""}
+      <span class="s">${isFinite(fa) ? pct(fa) + " do faturamento" : "sem faturamento"} · retorno ${xx(div(a.receita, invA))}</span>
+      ${isFinite(pb) ? `<span class="s cmp">${vrel(pa, pb, "desce")} vs. ${brl(pb)} por pedido em ${anoB} · ${vpp(fa, fb, "desce")} no % do faturamento</span>` : `<span class="s cmp">Sem ${invB ? "pedidos" : "investimento"} em ${cmp.rot} para comparar</span>`}</div>`;
+  };
+  const gp = div(ga, a.nPed);
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <div><h3 style="margin:0">Quanto custa cada venda</h3><p class="sub" style="margin:4px 0 0">${dBR(cmp.R.de)} a ${dBR(cmp.R.ate)}, comparado com as mesmas datas de ${anoB}. A gestão entra proporcional aos dias.</p></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
+      ${bloco("Só anúncios", a.ads, b.ads)}
+      ${bloco("Anúncios + gestão", a.ads + ga, b.ads + gb, ga ? `<span class="s">${brl(div(a.ads, a.nPed) || 0)} de anúncios + ${brl(gp || 0)} de gestão</span>` : "")}
+    </div>
+    ${ga && isFinite(gp) ? `<p class="sub" style="margin:0">A gestão soma <b>${brl(gp)}</b> a cada pedido. Olhando só os anúncios, esse valor fica de fora, mas ele também precisa ser pago pelas vendas.</p>` : ""}
+  </div>`;
+}
 // Tráfego pago x vendas: quanto do investimento (anúncios + gestão) foi para cada venda e para cada real vendido
 function openTrafConv(){
   const cmp = comparaAnoAnterior(), a = cmp.atual, b = cmp.ant, R = cmp.R, RA = cmp.RA;
@@ -1293,7 +1314,9 @@ function openTrafConv(){
         ${linha("<b>Custo por venda</b>", cpv, div(ib, b.nPed), brl, "desce", "tot")}
         ${linha("Só anúncios por venda", div(a.ads, a.nPed), div(b.ads, b.nPed), brl, "desce")}
         ${linha("<b>Investimento ÷ faturamento</b>", pfat, div(ib, b.receita), p1, "desce", "tot")}
+        ${linha("Só anúncios ÷ faturamento", div(a.ads, a.receita), div(b.ads, b.receita), p1, "desce")}
         ${linha("Retorno (faturamento ÷ investido)", div(a.receita, ia), div(b.receita, ib), xx, "sobe")}
+        ${linha("Retorno só dos anúncios", div(a.receita, a.ads), div(b.receita, b.ads), xx, "sobe")}
         ${linha("Custo por visita", div(ia, sa), div(ib, sb), brl, "desce")}
       </tbody>
     </table></div>
@@ -1761,13 +1784,13 @@ function vTrafego(){
   const roasTxt = (fat, inv) => inv ? (fat/inv).toLocaleString("pt-BR",{maximumFractionDigits:1}) + "×" : "—";
   return `<div class="head"><div><h2>Tráfego pago · ${esc(rot)}</h2><p>Investimento por dia e por plataforma. ${S.trafego.some(t => t.fonte === "planilha") ? "Os valores marcados com planilha vêm da planilha de planejamento e se atualizam sozinhos." : "Lance o valor investido por plataforma."}</p></div>
     <button class="btn pri" data-new="trafego">Lançar investimento</button></div>
+  ${painelCustoVenda()}
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
     <div class="kpi"><span class="l">Investido</span><span class="v num">${brl(c.ads)}</span><span class="s">${c.receita?pct(c.ads/c.receita)+" do faturamento":""}</span></div>
     <div class="kpi"><span class="l">Gestão de tráfego</span><span class="v num">${brl(totGest)}</span><span class="s">${gestaoFixos.length ? (P ? "agência, proporcional aos dias" : "agência (custo fixo mensal)") : `<button class="lnk" data-gestao>Cadastrar o custo da agência</button>`}</span></div>
     <div class="kpi"><span class="l">Custo total do tráfego</span><span class="v num">${brl(custoTotal)}</span><span class="s">anúncios + gestão${c.receita ? " · " + pct(custoTotal/c.receita) + " do faturamento" : ""}</span></div>
     <div class="kpi"><span class="l">Média por ${A ? "mês" : "dia"}</span><span class="v num">${brl(comInv ? tot.tot/comInv : 0)}</span><span class="s">${comInv} ${A ? (comInv===1?"mês":"meses") : (comInv===1?"dia":"dias")} com investimento</span></div>
     <div class="kpi"><span class="l">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""}</span><span class="v num">${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">${c.roasGeral ? "Faturamento ÷ investido" : "Receita vinda de anúncios ÷ investido"}</span></div>
-    <div class="kpi"><span class="l">CAC geral</span><span class="v num">${c.nPed ? brl(custoTotal/c.nPed) : "—"}</span><span class="s">(anúncios + gestão) ÷ pedidos</span></div>
     <div class="kpi"><span class="l">ROAS mínimo</span><span class="v num">${c.mcPct>0?(1/c.mcPct).toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</span><span class="s">Abaixo disso o anúncio dá prejuízo</span></div>
   </div>
   <div class="panel"><h3>${tituloRes}</h3><div class="tw"><table>
