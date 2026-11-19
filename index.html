@@ -1504,15 +1504,15 @@ function openPedido(k){
   if(!g.real && f.nuvemshopId && !f.taxaManual && f.status !== "Cancelado" && !taxasTentadas.has(k) && window.seilleNuvem){
     taxasTentadas.add(k);
     window.seilleNuvem.chamar("taxasPedido", {id: f.nuvemshopId}).then(r => {
-      if((r.taxa || r.juros) && modalEl && modalEl.dataset.ped === k) setTimeout(() => openPedido(k), 400);
-      else if(modalEl && modalEl.dataset.ped === k){ const a = modalEl.querySelector("#taxaAviso"); if(a) a.textContent = "A Nuvemshop não informou as taxas deste pedido; o app usa a estimativa."; }
+      if((r.taxa || r.juros) && modalEl && modalEl.dataset.pedAberto === k) setTimeout(() => openPedido(k), 400);
+      else if(modalEl && modalEl.dataset.pedAberto === k){ const a = modalEl.querySelector("#taxaAviso"); if(a) a.textContent = "A Nuvemshop não informou as taxas deste pedido; o app usa a estimativa."; }
     }).catch(() => {});
   }
   closeModal();
   modalEl = document.createElement("div"); modalEl.className = "ov";
   const L = (l, v, cls="") => `<tr class="${cls}"><td>${l}</td><td class="n">${brl(v)}</td></tr>`;
   const val = x => x == null ? "" : String(Math.round(num(x)*100)/100);
-  modalEl.dataset.ped = k;
+  modalEl.dataset.pedAberto = k;
   modalEl.innerHTML = `<form class="modal" novalidate>
     <div><h2>Pedido ${f.pedido ? "#" + esc(f.pedido) : ""}</h2>
       ${!g.real && f.nuvemshopId && !f.taxaManual ? `<p class="sub" id="taxaAviso" style="margin:4px 0 0"><span class="spin"></span>Buscando as taxas e os juros reais na Nuvemshop…</p>` : ""}
