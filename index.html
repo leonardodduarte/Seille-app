@@ -1120,6 +1120,8 @@ function vPainel(){
     <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
     <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
     <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
+    ${cardClientesNovos(c, cmp)}
+    ${cardPecasPedido(c, cmp)}
   </div></details>
   <details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
       <table class="dre"><tbody>
@@ -1300,6 +1302,116 @@ function openTrafConv(){
       <tbody>${mm.map(m => `<tr${m.ym === MES ? ' style="font-weight:700"' : ""}><td>${ymShort(m.ym)}</td><td class="n">${brl(m.inv)}</td><td class="n hide-m">${m.n}</td><td class="n">${mostra(div(m.inv, m.n), brl)}</td><td class="n">${mostra(div(m.inv, m.rec), p1)}</td></tr>`).join("")}</tbody>
     </table></div><p class="sub" style="margin:8px 0 0">Meses inteiros, com a gestão do mês completa.</p></div>` : ""}
     <div class="mact"><button type="button" class="btn" data-ir="trafego">Ver tráfego pago ›</button><button type="button" class="btn" id="fcancel">Fechar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+}
+// ---------- Mais indicadores: clientes novos x que voltaram e peças por pedido ----------
+const vpp = (x, y, melhor = "sobe") => { // variação em pontos percentuais
+  if(!isFinite(x) || !isFinite(y)) return "";
+  const d = x - y, bom = melhor === "sobe" ? d >= 0 : d <= 0;
+  return `<span class="var ${bom ? "up" : "down"}">${d >= 0 ? "+" : "−"}${(Math.abs(d)*100).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})} p.p.</span>`;
+};
+const vrel = (x, y, melhor = "sobe") => {
+  if(!isFinite(x) || !isFinite(y) || !y) return "";
+  const d = (x - y) / Math.abs(y), bom = melhor === "sobe" ? d >= 0 : d <= 0;
+  return `<span class="var ${bom ? "up" : "down"}">${d >= 0 ? "+" : "−"}${pct(Math.abs(d), 0)}</span>`;
+};
+const n1 = v => isFinite(v) ? v.toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:2}) : "—";
+// Cliente novo = primeira compra na loja dentro do período; voltou = já tinha comprado antes do período começar
+function clientesNovos(vs, de){
+  const prim = {}; agrupaPedidos(S.vendas.filter(ativa)).forEach(g => { const k = chaveCli(g.f); if(!k) return; const d = g.f.data || ""; if(d && (!prim[k] || d < prim[k])) prim[k] = d; });
+  const per = {}; agrupaPedidos(vs).filter(g => !g.cancelado).forEach(g => { const k = chaveCli(g.f); if(!k) return; const o = (per[k] ||= {nome: g.f.cliente, n: 0, total: 0}); o.n++; o.total += g.total; });
+  const novos = [], voltaram = [];
+  Object.entries(per).forEach(([k, o]) => { o.primeira = prim[k] || ""; (o.primeira && o.primeira < de ? voltaram : novos).push(o); });
+  const soma = l => l.reduce((a, o) => a + o.total, 0), ped = l => l.reduce((a, o) => a + o.n, 0);
+  const tot = novos.length + voltaram.length;
+  return {novos, voltaram, tot, fatN: soma(novos), fatV: soma(voltaram), pedN: ped(novos), pedV: ped(voltaram), pctV: tot ? voltaram.length / tot : NaN};
+}
+function cardClientesNovos(c, cmp){
+  const d = clientesNovos(c.vs, cmp.R.de);
+  const a = clientesNovos(cmp.atual.vs, cmp.R.de), b = clientesNovos(cmp.ant.vs, cmp.RA.de);
+  return `<div class="kpi kclick" data-clinovos role="button" tabindex="0"><span class="l">Clientes novos ›</span><span class="v num">${d.novos.length}</span><span class="s">${d.voltaram.length} ${d.voltaram.length===1?"voltou":"voltaram"} a comprar (${d.tot ? pct(d.pctV, 0) : "—"} dos clientes)</span>${b.tot ? `<span class="s cmp">${vrel(a.novos.length, b.novos.length)} novos (${b.novos.length} em ${cmp.rot}) · recorrentes ${vpp(a.pctV, b.pctV)}</span>` : ""}</div>`;
+}
+function openClientesNovos(){
+  const cmp = comparaAnoAnterior(), R = cmp.R, RA = cmp.RA;
+  const a = clientesNovos(cmp.atual.vs, R.de), b = clientesNovos(cmp.ant.vs, RA.de);
+  const anoA = R.de.slice(0,4), anoB = RA.de.slice(0,4), div = (x, y) => y ? x / y : NaN;
+  const linha = (rot, x, y, f, v) => `<tr><td>${rot}</td><td class="n">${f(x)}${v ? `<div style="font-size:12px">${v}</div>` : ""}</td><td class="n">${b.tot ? f(y) : "—"}</td></tr>`;
+  const brl_ = v => isFinite(v) ? brl(v) : "—", pc = v => isFinite(v) ? pct(v, 0) : "—";
+  const lista = a.voltaram.slice().sort((x, y) => y.total - x.total);
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal largo">
+    <div><h2>Clientes novos x que voltaram · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${dBR(R.de)} a ${dBR(R.ate)} comparado com ${dBR(RA.de)} a ${dBR(RA.ate)}. Novo = primeira compra na loja dentro do período. Voltou = já tinha comprado antes.</p></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="kpi"><span class="l">Novos</span><span class="v num">${a.novos.length}</span><span class="s">${brl(a.fatN)} · ticket ${brl_(div(a.fatN, a.pedN))}</span></div>
+      <div class="kpi"><span class="l">Voltaram a comprar</span><span class="v num">${a.voltaram.length}</span><span class="s">${brl(a.fatV)} · ticket ${brl_(div(a.fatV, a.pedV))}</span></div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th></th><th class="n">${anoA}</th><th class="n">${anoB}</th></tr></thead>
+      <tbody>
+        ${linha("Clientes que compraram", a.tot, b.tot, intf, vrel(a.tot, b.tot))}
+        ${linha("Novos", a.novos.length, b.novos.length, intf, vrel(a.novos.length, b.novos.length))}
+        ${linha("Voltaram a comprar", a.voltaram.length, b.voltaram.length, intf, vrel(a.voltaram.length, b.voltaram.length))}
+        ${linha("<b>% que voltaram</b>", a.pctV, b.pctV, pc, vpp(a.pctV, b.pctV))}
+        ${linha("Faturamento de novos", a.fatN, b.fatN, brl, vrel(a.fatN, b.fatN))}
+        ${linha("Faturamento de quem voltou", a.fatV, b.fatV, brl, vrel(a.fatV, b.fatV))}
+        ${linha("% do faturamento de quem voltou", div(a.fatV, a.fatN + a.fatV), div(b.fatV, b.fatN + b.fatV), pc, vpp(div(a.fatV, a.fatN + a.fatV), div(b.fatV, b.fatN + b.fatV)))}
+        ${linha("Ticket médio de novos", div(a.fatN, a.pedN), div(b.fatN, b.pedN), brl_, vrel(div(a.fatN, a.pedN), div(b.fatN, b.pedN)))}
+        ${linha("Ticket médio de quem voltou", div(a.fatV, a.pedV), div(b.fatV, b.pedV), brl_, vrel(div(a.fatV, a.pedV), div(b.fatV, b.pedV)))}
+      </tbody>
+    </table></div>
+    <div><h3 style="margin:0 0 8px">Quem voltou a comprar (${lista.length})</h3><div class="tw"><table>
+      <thead><tr><th>Cliente</th><th class="n hide-m">1ª compra</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead>
+      <tbody>${lista.length ? lista.map(o => `<tr class="click" data-cliente="${esc(o.nome)}"><td>${esc(o.nome)} <span class="irseta">›</span><div class="sub">desde ${dBR(o.primeira)}</div></td><td class="n hide-m">${dBR(o.primeira)}</td><td class="n">${o.n}</td><td class="n">${brl(o.total)}</td></tr>`).join("") : emptyRow(4, "Ninguém voltou a comprar neste período", "")}</tbody>
+    </table></div></div>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
+}
+function dadosPecas(vs){
+  const gs = agrupaPedidos(vs).filter(g => !g.cancelado);
+  const faixas = [["1 peça", 1], ["2 peças", 2], ["3 peças", 3], ["4 ou mais", 4]].map(([rot, k]) => ({rot, k, n: 0, rec: 0}));
+  const combos = {}, tams = {};
+  let pecas = 0;
+  for(const g of gs){
+    const q = g.ls.reduce((a, v) => a + (num(v.qtd) || 1), 0); pecas += q;
+    const f = faixas[Math.min(q, 4) - 1] || faixas[0]; f.n++; f.rec += g.total;
+    const mods = [...new Set(g.ls.map(v => modeloDe(v).nome))].sort((x, y) => x.localeCompare(y));
+    for(let i = 0; i < mods.length; i++) for(let j = i + 1; j < mods.length; j++){ const k = mods[i] + " + " + mods[j]; combos[k] = (combos[k] || 0) + 1; }
+    g.ls.forEach(v => { const t = tamanhoDe(v); if(t) tams[t] = (tams[t] || 0) + (num(v.qtd) || 1); });
+  }
+  return {gs, pecas, nPed: gs.length, ppp: gs.length ? pecas / gs.length : NaN, faixas,
+    combos: Object.entries(combos).sort((a, b) => b[1] - a[1]), tams: Object.entries(tams).sort((a, b) => b[1] - a[1])};
+}
+function cardPecasPedido(c, cmp){
+  const d = dadosPecas(c.vs), a = dadosPecas(cmp.atual.vs), b = dadosPecas(cmp.ant.vs);
+  const mais = d.nPed ? d.faixas.slice(1).reduce((x, f) => x + f.n, 0) / d.nPed : NaN;
+  return `<div class="kpi kclick" data-pecasped role="button" tabindex="0"><span class="l">Peças por pedido ›</span><span class="v num">${n1(d.ppp)}</span><span class="s">${intf(d.pecas)} peças em ${d.nPed} pedidos · ${isFinite(mais) ? pct(mais, 0) : "—"} com 2 ou mais</span>${b.nPed ? `<span class="s cmp">${vrel(a.ppp, b.ppp)} vs. ${n1(b.ppp)} em ${cmp.rot}</span>` : ""}</div>`;
+}
+function openPecasPedido(){
+  const cmp = comparaAnoAnterior(), R = cmp.R, RA = cmp.RA;
+  const a = dadosPecas(cmp.atual.vs), b = dadosPecas(cmp.ant.vs), anoA = R.de.slice(0,4), anoB = RA.de.slice(0,4);
+  const div = (x, y) => y ? x / y : NaN;
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal largo">
+    <div><h2>Peças por pedido · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${dBR(R.de)} a ${dBR(R.ate)} comparado com ${dBR(RA.de)} a ${dBR(RA.ate)}.</p></div>
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="kpi"><span class="l">Peças por pedido</span><span class="v num">${n1(a.ppp)}</span>${b.nPed ? `<span class="s cmp">${vrel(a.ppp, b.ppp)} vs. ${n1(b.ppp)} em ${anoB}</span>` : ""}</div>
+      <div class="kpi"><span class="l">Peças vendidas</span><span class="v num">${intf(a.pecas)}</span><span class="s">em ${a.nPed} pedidos</span>${b.nPed ? `<span class="s cmp">${vrel(a.pecas, b.pecas)} vs. ${intf(b.pecas)} em ${anoB}</span>` : ""}</div>
+    </div>
+    <div><h3 style="margin:0 0 8px">Pedidos por quantidade de peças</h3><div class="tw"><table>
+      <thead><tr><th></th><th class="n">Pedidos ${anoA}</th><th class="n">Ticket médio</th><th class="n">${anoB}</th></tr></thead>
+      <tbody>${a.faixas.map((f, i) => { const fb = b.faixas[i]; return `<tr><td>${f.rot}</td><td class="n">${f.n} <span class="sub">(${a.nPed ? pct(f.n / a.nPed, 0) : "—"})</span></td><td class="n">${f.n ? brl(f.rec / f.n) : "—"}</td><td class="n">${b.nPed ? `${fb.n} <span class="sub">(${pct(fb.n / b.nPed, 0)})</span>` : "—"}</td></tr>`; }).join("")}</tbody>
+    </table></div></div>
+    <div><h3 style="margin:0 0 8px">Peças compradas juntas</h3>${a.combos.length ? `<div class="tw"><table><thead><tr><th>Combinação</th><th class="n">Pedidos</th></tr></thead><tbody>${a.combos.slice(0, 10).map(([k, n]) => `<tr><td>${esc(k)}</td><td class="n">${n}</td></tr>`).join("")}</tbody></table></div>` : `<p class="sub" style="margin:0">Nenhum pedido com peças diferentes neste período.</p>`}</div>
+    ${a.tams.length ? `<div><h3 style="margin:0 0 8px">Tamanhos mais vendidos</h3><div class="tw"><table><thead><tr><th>Tamanho</th><th class="n">Peças</th><th class="n">%</th></tr></thead><tbody>${a.tams.slice(0, 12).map(([t, n]) => `<tr><td>${esc(t)}</td><td class="n">${n}</td><td class="n">${pct(div(n, a.pecas), 0)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
+    <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
   </div>`;
   document.body.appendChild(modalEl);
   $("#fcancel", modalEl).onclick = closeModal;
@@ -2492,6 +2604,8 @@ document.addEventListener("click", e => {
   const cpi = e.target.closest("[data-cupir]"); if(cpi){ closeModal(); PEDCUP = cpi.dataset.cupir; PEDQ = ""; PEDUF = ""; PEDF = "todos"; PEDLIM = 100; if(location.hash === "#pedidos") render(); else location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
   if(e.target.closest("[data-trafconv]")){ openTrafConv(); return; }
+  if(e.target.closest("[data-clinovos]")){ openClientesNovos(); return; }
+  if(e.target.closest("[data-pecasped]")){ openPecasPedido(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
   const cli = e.target.closest("[data-cliente]"); if(cli){ closeModal(); PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
