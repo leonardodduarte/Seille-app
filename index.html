@@ -157,6 +157,9 @@ details.dreBox[open]>summary{margin-bottom:12px}
 .rnums>div{padding:12px 14px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line);min-width:0}
 .rnums>div:first-child{border-left:0}
 .rnums span{font-size:12px;color:var(--muted)}
+.rnums small{font-size:12px;color:var(--muted);line-height:1.3}
+.rnums small.var{color:var(--ink);font-weight:700;margin-top:4px}
+.rnums small.var.down{color:var(--bad)}
 .rnums b{font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:600px){.rnums>div{padding:10px}.rnums b{font-size:16px}}
 .alerta{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;border-radius:14px;padding:12px 16px;background:var(--bad-soft);color:var(--bad);font:inherit;cursor:pointer}
@@ -840,6 +843,19 @@ function resumoRapido(){
   const faixa = {hoje:[t,t], ontem:[addDays(t,-1),addDays(t,-1)], semana:[addDays(t,-dow),t]}[RAPIDO];
   const gs = agrupaPedidos(S.vendas.filter(v => v.data >= faixa[0] && v.data <= faixa[1])).filter(g => !g.cancelado);
   const fat = gs.reduce((a,g)=>a+g.total,0);
+  // mesma data do ano anterior (dia inteiro: os pedidos guardam só a data, não a hora)
+  const fa = [menosUmAno(faixa[0]), menosUmAno(faixa[1])];
+  const temAnt = S.vendas.some(v => (v.data||"").startsWith(fa[0].slice(0,4)));
+  const ga = agrupaPedidos(S.vendas.filter(v => v.data >= fa[0] && v.data <= fa[1])).filter(g => !g.cancelado);
+  const fatA = ga.reduce((a,g)=>a+g.total,0);
+  const rotA = fa[0] === fa[1] ? dBR(fa[0]).slice(0,6) + fa[0].slice(2,4) : `${dBR(fa[0]).slice(0,2)}–${dBR(fa[1]).slice(0,6)}${fa[1].slice(2,4)}`;
+  const cmpR = (a, b, fmt, abs) => {
+    if(!temAnt) return "";
+    if(!ga.length) return `<small>sem vendas em ${rotA}</small>`;
+    if(!b) return `<small>${fmt(b)} em ${rotA}</small>`;
+    const d = abs ? a - b : (a - b) / b, sobe = d >= 0, txt = abs ? (sobe ? "+" : "−") + Math.abs(d) : (sobe ? "+" : "−") + pct(Math.abs(d), 0);
+    return `<small class="var ${sobe ? "up" : "down"}">${sobe ? "▲" : "▼"} ${txt}</small><small>${fmt(b)} em ${rotA}</small>`;
+  };
   const cts = contasAPagar(), vencidas = cts.filter(x => x.venc && x.venc < t), semana = cts.filter(x => x.venc && x.venc >= t && x.venc <= addDays(t, 7));
   const card = (n, rot, ir) => `<button class="rcard" data-rapido="${ir}"><b>${n ? n + (n===1?" venda":" vendas") : "Sem vendas"}</b><span>${rot}</span></button>`;
   const abas = [["hoje","Hoje"],["ontem","Ontem"],["semana","Esta semana"]].map(([k,l]) => `<button class="${RAPIDO===k?"on":""}" data-rapidoper="${k}">${l}</button>`).join("");
@@ -849,10 +865,10 @@ function resumoRapido(){
     ${conferindo ? `<p class="sub" style="margin:0"><span class="spin"></span>Conferindo os status com a Nuvemshop… pode levar alguns minutos.</p>` : `<p class="sub" style="margin:0">Os status seguem a Nuvemshop. <button class="lnk" data-conferir>Conferir agora</button></p>`}
     <div class="seg">${abas}</div>
     <div class="rnums">
-      <div><span>Vendas</span><b>${gs.length}</b></div>
-      <div><span>Faturamento</span><b>${brl(fat)}</b></div>
-      <div><span>Ticket médio</span><b>${gs.length ? brl(fat/gs.length) : "—"}</b></div>
-    </div></div>`;
+      <div><span>Vendas</span><b>${gs.length}</b>${cmpR(gs.length, ga.length, String, true)}</div>
+      <div><span>Faturamento</span><b>${brl(fat)}</b>${cmpR(fat, fatA, brl)}</div>
+      <div><span>Ticket médio</span><b>${gs.length ? brl(fat/gs.length) : "—"}</b>${gs.length ? cmpR(fat/gs.length, ga.length ? fatA/ga.length : 0, brl) : (temAnt && ga.length ? `<small>${brl(fatA/ga.length)} em ${rotA}</small>` : "")}</div>
+    </div>${temAnt ? `<p class="sub" style="margin:0">Comparado com ${fa[0] === fa[1] ? "o mesmo dia" : "os mesmos dias"} de ${fa[0].slice(0,4)}, dia inteiro.</p>` : ""}</div>`;
 }
 function saudacao(){
   const e = (window.seilleAuth?.email || "").split("@")[0].split(/[._\-+0-9]/).filter(Boolean)[0] || "Seille";
