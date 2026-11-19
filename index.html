@@ -1169,9 +1169,9 @@ function openCupons(){
       <div class="kpi"><span class="l">Descontos dados</span><span class="v num">${brl(d.desc)}</span><span class="s">${d.fatCom + d.desc ? pct(d.desc/(d.fatCom + d.desc)) + " do valor dos pedidos com cupom" : ""}</span></div>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n">Desconto dado</th><th class="n">Faturamento</th><th class="n hide-m">Ticket médio</th></tr></thead>
-      <tbody>${d.lista.map(([k,o]) => `<tr class="click" data-cupir="${esc(k)}"><td><b>${esc(k)}</b> <span class="irseta">›</span></td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.total)}</td><td class="n hide-m">${brl(o.total/o.n)}</td></tr>`).join("")}
-        ${d.sem.length ? `<tr class="click" data-cupir="__sem"><td><span class="sub">Sem cupom</span> <span class="irseta">›</span></td><td class="n">${d.sem.length}</td><td class="n">—</td><td class="n">${brl(d.fatSem)}</td><td class="n hide-m">${tk(d.fatSem, d.sem)}</td></tr>` : ""}
+      <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n hide-m">Desconto dado</th><th class="n">Faturamento</th><th class="n hide-m">Ticket médio</th></tr></thead>
+      <tbody>${d.lista.map(([k,o]) => `<tr class="click" data-cupir="${esc(k)}"><td><b>${esc(k)}</b>&nbsp;<span class="irseta">›</span></td><td class="n">${o.n}</td><td class="n hide-m">${brl(o.desconto)}</td><td class="n">${brl(o.total)}</td><td class="n hide-m">${brl(o.total/o.n)}</td></tr>`).join("")}
+        ${d.sem.length ? `<tr class="click" data-cupir="__sem"><td><span class="sub">Sem cupom</span>&nbsp;<span class="irseta">›</span></td><td class="n">${d.sem.length}</td><td class="n hide-m">—</td><td class="n">${brl(d.fatSem)}</td><td class="n hide-m">${tk(d.fatSem, d.sem)}</td></tr>` : ""}
         ${n ? "" : emptyRow(5, "Sem pedidos no período", "")}</tbody>
     </table></div>
     <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
