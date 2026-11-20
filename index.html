@@ -1296,7 +1296,7 @@ let pdfPronto = null;
 async function gerarPdf(){
   const gs = pedidosPendentes(); if(!gs.length) return null;
   const b = await pdfPendentes(gs);
-  return {gs, arquivo: new File([b], `seille-${PEDF === "env" ? "por-enviar" : "por-embalar"}-${today()}.pdf`, {type: "application/pdf"})};
+  return {gs, arquivo: new File([b], `SEILLE - ${PEDF === "env" ? "POR ENVIAR" : "POR EMBALAR"}${PEDENV ? " - " + (/sedex/i.test(PEDENV) ? "SEDEX" : "OUTROS ENVIOS") : ""} - ${dBR(today()).replace(/\//g, "-")}.pdf`, {type: "application/pdf"})};
 }
 async function verPdf(){
   if(zapGerando) return; zapGerando = "ver"; render();
