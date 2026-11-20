@@ -1261,9 +1261,13 @@ async function pdfPendentes(gs){
   y += 6;
   // pedidos
   const F = 22;
+  // cada grupo de envio começa numa página nova, com um cabeçalho grande
   porEnvio(gs).forEach(([envio, lista]) => {
-  cabe(30); y += 2; doc.setFillColor(0,0,0); doc.roundedRect(M, y, W - 2*M, 10, 2, 2, "F");
-  doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(255); doc.text(`${envio.toUpperCase()} · ${lista.length} ${lista.length===1?"pedido":"pedidos"}`, M + 4, y + 6.8); y += 16;
+  novaPagina();
+  doc.setFillColor(0,0,0); doc.roundedRect(M, y, W - 2*M, 18, 3, 3, "F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(17); doc.setTextColor(255); doc.text(envio.toUpperCase(), M + 6, y + 8.5);
+  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.text(`${lista.length} ${lista.length===1?"pedido":"pedidos"} · ${lista.reduce((a,g)=>a+g.qtd,0)} peças · do mais antigo para o mais novo`, M + 6, y + 14.5);
+  y += 26;
   lista.forEach(g => {
     const f = g.f, alt = 9 + g.ls.length * (F + 3);
     cabe(Math.min(alt, 9 + F + 3) + 2);
