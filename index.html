@@ -120,6 +120,7 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 }
 @media (min-width:1001px){.bar{flex-wrap:wrap}nav.tabs{order:3;flex-basis:100%;margin:4px -12px 0}}
 .seg.full{align-self:stretch}
+@media (max-width:600px){.seg.full button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 4px;font-size:13px;min-width:0}.seg.full button span{margin:0;font-size:15px;opacity:.75}}
 .ptop{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .seg.modo{margin-left:auto}
 @media (max-width:600px){.seg.modo{margin-left:0;flex:1 1 100%}.seg.modo button{flex:1}}
@@ -1036,7 +1037,7 @@ async function marcarAntigos(btn){
 function irPara(destino){
   closeModal();
   if(destino === "taxfrete"){ location.hash = "#custos"; setTimeout(openTaxasFretes, 60); return; }
-  if(destino === "pedidos" || destino === "pedidos-andamento"){ PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; PEDF = destino === "pedidos-andamento" ? "and" : "todos"; if(destino === "pedidos-andamento"){ ANO = false; PER = {de: addDays(today(), -DIAS_FILA), ate: today()}; } location.hash = "#pedidos"; return; }
+  if(destino === "pedidos" || destino === "pedidos-andamento"){ PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; PEDF = destino === "pedidos-andamento" ? "emb" : "todos"; location.hash = "#pedidos"; return; }
   location.hash = "#" + destino;
 }
 function abrirPeca(nome){
@@ -1210,10 +1211,13 @@ function vPedidos(){
   const tr = soma(g=>g.total), tliq = soma(g=>g.liquido), tl = soma(g=>g.sobra), totFrete = soma(g=>g.frete), comCupom = at.filter(g=>g.f.cupom).length;
   const algumEst = at.some(g => !g.real);
   const ini = s => (s||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("") || "?";
-  const seg = [["and","Em andamento"],["fin","Finalizados"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${k==="todos"?grupos.length:cnt(k)}</span></button>`).join("");
+  // abas como na Nuvemshop: por embalar / por enviar contam todas as datas (é o trabalho pendente); enviados e todos seguem o mês/ano/período
+  const abertos = k => new Set(S.vendas.filter(v => PED_GRUPO[k].includes(v.status || "Recebido")).map(chavePed)).size;
+  const doRecorte = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data)));
+  const nAba = {todos: doRecorte.length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
+  const seg = [["todos","Todos"],["emb","Por embalar"],["env","Por enviar"],["fin","Enviados"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
-  ${PED_ROTULO[PEDF] ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Mostrando <b>${PED_ROTULO[PEDF].toLowerCase()}</b>, de todas as datas.</span><button class="btn" data-pedf="todos">Ver todos ›</button></div>` : ""}
   ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
   <div class="filtros">
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
