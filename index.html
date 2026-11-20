@@ -2980,7 +2980,7 @@ document.addEventListener("change", async e => {
   if(e.target.id === "peduf"){ PEDUF = e.target.value; render(); return; }
   if((e.target.id === "perde" || e.target.id === "perate") && PER && e.target.value){
     const de = e.target.id === "perde" ? e.target.value : PER.de, ate = e.target.id === "perate" ? e.target.value : PER.ate;
-    PER = de <= ate ? {de, ate} : {de: ate, ate: de}; PEDLIM = 100; e.target.blur(); render(); return; }
+    PER = de <= ate ? {de, ate} : {de: ate, ate: de}; PEDLIM = 100; perPendente = true; return; }
   if(e.target.id === "pedcup"){ PEDCUP = e.target.value; render(); return; }
   const sp = e.target.closest("select[data-statusped]");
   if(sp){
@@ -2994,6 +2994,8 @@ document.addEventListener("change", async e => {
   const body = {...v, status:s.value}; delete body.id;
   try{ await S.db.collection("vendas").doc(v.id).set(body); toast("Status: " + s.value); } catch(err){ toast("Não foi possível mudar o status"); s.value = v.status; }
 });
+let perPendente = false;
+document.addEventListener("focusout", e => { if((e.target.id === "perde" || e.target.id === "perate") && perPendente){ perPendente = false; setTimeout(render, 0); } });
 let pedqT = 0;
 document.addEventListener("input", e => {
   if(e.target.id !== "pedq") return;
