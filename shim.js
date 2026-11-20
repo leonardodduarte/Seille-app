@@ -17,6 +17,8 @@
     return { docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: { fromCache: false, hasPendingWrites: false } };
   };
   const snapDoc = (c, id) => { const d = mapa(c).get(id); return { id, exists: !!d, data: () => d, metadata: { fromCache: false, hasPendingWrites: false } }; };
+  const pendentes = {};
+  const avisaDepois = c => { if (pendentes[c]) return; pendentes[c] = setTimeout(() => { delete pendentes[c]; avisa(c); }, 1500); };
   const avisa = c => {
     const s = snapCol(c); (ouvintes[c] || []).forEach(fn => { try { fn(s); } catch (e) { console.error(e); } });
     for (const k of Object.keys(ouvDoc)) if (k.startsWith(c + "/")) { const id = k.slice(c.length + 1); ouvDoc[k].forEach(fn => fn(snapDoc(c, id))); }
@@ -132,8 +134,8 @@
       if (data.length < 1000) break;
     }
     sb.channel("docs").on("postgres_changes", { event: "*", schema: "public", table: "docs" }, p => {
-      if (p.eventType === "DELETE") { const o = p.old || {}; if (o.col && o.id) { mapa(o.col).delete(o.id); avisa(o.col); } }
-      else { const n = p.new; mapa(n.col).set(n.id, n.data); avisa(n.col); }
+      if (p.eventType === "DELETE") { const o = p.old || {}; if (o.col && o.id) { mapa(o.col).delete(o.id); avisaDepois(o.col); } }
+      else { const n = p.new; mapa(n.col).set(n.id, n.data); avisaDepois(n.col); }
     }).subscribe();
     pronto();
   }

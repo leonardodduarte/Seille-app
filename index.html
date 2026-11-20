@@ -23,7 +23,7 @@ input,select,textarea{font-size:16px!important}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
-<script src="shim.js?v=8"></script>
+<script src="shim.js?v=9"></script>
 </head>
 <body>
 <div class="ov" id="login" hidden></div>
@@ -1221,7 +1221,7 @@ function vPedidos(){
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
-    ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => `<img src="${esc(u)}" alt="" loading="lazy">`).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
+    ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => fotoTag(u)).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
       <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
       <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
@@ -1525,7 +1525,7 @@ function openPedido(k){
       <p class="sub" style="margin:4px 0 0">${[f.cliente, dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – "), f.pagamento, f.parcelas ? f.parcelas + "x" : "", f.canal].filter(Boolean).map(esc).join(" · ")}</p></div>
     <div class="tw"><table>
       <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n hide-m">Custo</th></tr></thead>
-      <tbody>${g.ls.map(v => `<tr class="click" data-item="${esc(v.id)}"><td><div class="itemfoto">${/^https:\/\//.test(v.imagem||"") ? `<img class="foto" src="${esc(v.imagem)}" alt="" loading="lazy">` : `<span class="foto vazia"></span>`}<div>${esc(nomePeca(v))}${v.produtoId ? "" : `<div><span class="pill warn">sem ficha técnica</span></div>`}</div></div></td><td class="n">${num(v.qtd)}</td><td class="n">${brl(num(v.precoUnit)*num(v.qtd))}</td><td class="n hide-m">${brl(num(v.custoUnit)*num(v.qtd))}</td></tr>`).join("")}</tbody>
+      <tbody>${g.ls.map(v => `<tr class="click" data-item="${esc(v.id)}"><td><div class="itemfoto">${/^https:\/\//.test(v.imagem||"") ? `${fotoTag(v.imagem, "foto")}` : `<span class="foto vazia"></span>`}<div>${esc(nomePeca(v))}${v.produtoId ? "" : `<div><span class="pill warn">sem ficha técnica</span></div>`}</div></div></td><td class="n">${num(v.qtd)}</td><td class="n">${brl(num(v.precoUnit)*num(v.qtd))}</td><td class="n hide-m">${brl(num(v.custoUnit)*num(v.qtd))}</td></tr>`).join("")}</tbody>
     </table></div>
     <table class="dre"><tbody>
       ${L(`Valor das peças (${g.qtd} ${g.qtd===1?"unidade":"unidades"})`, g.pecas)}
@@ -2743,6 +2743,12 @@ async function semearGestao(){
   }catch(e){ console.error("cadastro inicial", e); } // tenta de novo só na próxima abertura do app
 }
 const GRUPO_CUSTOS = [["custos","Visão geral"],["contas","Contas a pagar"],["trafego","Tráfego pago"],["funcionarias","Funcionárias"],["impostos","Impostos"],["contador","Contador"],["colecoes","Coleções"]];
+// junta vários pedidos de redesenho em um só (evita travar quando chegam muitas atualizações)
+let renderAgendado = 0;
+function renderLogo(){ if(renderAgendado) return; renderAgendado = requestAnimationFrame(() => { renderAgendado = 0; render(); }); }
+// miniatura da foto da Nuvemshop (o original tem até 1024 px); se a miniatura não existir, usa a original
+const miniatura = u => String(u||"").replace(/-(\d+)-(\d+)(\.(?:jpe?g|png|webp)(?:\?.*)?)$/i, "-240-0$3");
+const fotoTag = (u, cls="") => `<img${cls ? ` class="${cls}"` : ""} src="${esc(miniatura(u))}" data-orig="${esc(u)}" alt="" loading="lazy" decoding="async" onerror="if(this.dataset.orig&&this.src!==this.dataset.orig){this.src=this.dataset.orig}else{this.style.visibility='hidden'}">`;
 function render(){
   const v = curView();
   document.querySelectorAll("#tabs a").forEach(a => a.removeAttribute("aria-current"));
@@ -2887,7 +2893,7 @@ $("#atualizar").onclick = () => {
       S[col] = snap.docs.map(d => ({id:d.id, ...d.data()}));
       if(!snap.metadata.fromCache) done(col);
       else if(S.loaded.size < NLOAD) done(col);
-      render();
+      renderLogo();
     }, err => { done(col); S.failed = "Parte dos dados não pôde ser carregada. Recarregue a página mais tarde."; render(); });
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
