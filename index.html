@@ -1215,7 +1215,7 @@ function vPedidos(){
   const abertos = k => new Set(S.vendas.filter(v => PED_GRUPO[k].includes(v.status || "Recebido")).map(chavePed)).size;
   const doRecorte = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data)));
   const nAba = {todos: doRecorte.length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
-  const seg = [["todos","Todos"],["emb","Por embalar"],["env","Por enviar"],["fin","Enviados"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
+  const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
