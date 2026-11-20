@@ -1196,21 +1196,11 @@ const PED_ROTULO = {emb:"Por embalar", env:"Por enviar", atraso:"Por embalar há
 let zapGerando = false;
 // tipo de envio simplificado (a partir do nome que a Nuvemshop manda, ex.: "Melhor Envio - Jadlog .Package")
 function tipoEnvio(f){
-  const e = semAc(f.envio || "");
-  if(!e) return "Envio não informado";
-  if(/retir|pickup|loja fisica|ponto de retirada/.test(e)) return "Retirada";
-  if(/jadlog/.test(e)) return "Jadlog";
-  if(/sedex/.test(e)) return "Correios SEDEX";
-  if(/\bpac\b/.test(e)) return "Correios PAC";
-  if(/mini envios/.test(e)) return "Correios Mini Envios";
-  if(/loggi/.test(e)) return "Loggi";
-  if(/azul/.test(e)) return "Azul Cargo";
-  if(/correios/.test(e)) return "Correios";
-  if(/motoboy|entrega local|expresso/.test(e)) return "Entrega local / motoboy";
-  return String(f.envio).replace(/^melhor envio\s*-\s*/i, "").trim();
+  // só o SEDEX (envio rápido) fica separado; o resto vai junto
+  return /sedex/.test(semAc(f.envio || "")) ? "SEDEX (rápido)" : "Outros envios";
 }
 let PEDENV = "";
-function porEnvio(gs){ const m = {}; gs.forEach(g => (m[tipoEnvio(g.f)] ||= []).push(g)); return Object.entries(m).sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0])); }
+function porEnvio(gs){ const m = {}; gs.forEach(g => (m[tipoEnvio(g.f)] ||= []).push(g)); return Object.entries(m).sort((a,b) => (a[0] === "Outros envios") - (b[0] === "Outros envios")); }
 function pedidosPendentes(){
   const st = PED_GRUPO[PEDF === "env" ? "env" : "emb"];
   return agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))).filter(g => !PEDENV || tipoEnvio(g.f) === PEDENV).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"") || String(a.f.pedido||"").localeCompare(String(b.f.pedido||""), undefined, {numeric:true}));
