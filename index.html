@@ -1189,6 +1189,75 @@ const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"], emb:["Recebido","Em produção"], env:["Pronto"]};
 PED_GRUPO.atraso = PED_GRUPO.emb;
 const PED_ROTULO = {emb:"Por embalar", env:"Por enviar", atraso:"Por embalar há mais tempo"};
+// ---------- lista de pedidos por embalar / por enviar para mandar no WhatsApp ----------
+let zapGerando = false;
+function pedidosPendentes(){
+  const st = PED_GRUPO[PEDF === "env" ? "env" : "emb"];
+  return agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"") || String(a.f.pedido||"").localeCompare(String(b.f.pedido||""), undefined, {numeric:true}));
+}
+function textoPendentes(gs){
+  const titulo = PEDF === "env" ? "POR ENVIAR" : "POR EMBALAR";
+  const resumo = {}; gs.forEach(g => g.ls.forEach(v => { const k = nomePeca(v); resumo[k] = (resumo[k]||0) + num(v.qtd); }));
+  const linhas = [`*SEILLE · PEDIDOS ${titulo}* (${gs.length}) · ${dBR(today())}`, ``, `*Resumo de peças*`];
+  Object.entries(resumo).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).forEach(([k,n]) => linhas.push(`• ${n}× ${k}`));
+  linhas.push(``, `*Pedidos* (do mais antigo para o mais novo)`);
+  gs.forEach(g => {
+    const f = g.f;
+    linhas.push(``, `*#${f.pedido || "—"}* · ${dBR(f.data)} · ${f.cliente || ""}`);
+    g.ls.forEach(v => linhas.push(`  – ${num(v.qtd)}× ${nomePeca(v)}`));
+    const local = [f.cidade, f.estado].filter(Boolean).join(" – "); if(local) linhas.push(`  📍 ${local}`);
+  });
+  return linhas.join("\n");
+}
+// imagem com a lista (fotos das peças); se uma foto não puder ser usada, entra um quadrado cinza no lugar
+function carregaFoto(u){
+  return new Promise(res => { if(!/^https:\/\//.test(u||"")) return res(null);
+    const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => res(null); im.src = miniatura(u); setTimeout(() => res(null), 8000); });
+}
+async function imagemPendentes(gs){
+  const W = 1080, P = 48, FOTO = 132, titulo = PEDF === "env" ? "Pedidos por enviar" : "Pedidos por embalar";
+  const linhas = gs.flatMap(g => g.ls.map((v, i) => ({g, v, primeira: i === 0})));
+  const fotos = await Promise.all(linhas.map(l => carregaFoto(l.v.imagem)));
+  const H = 200 + linhas.length * (FOTO + 28) + gs.length * 70 + 60;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = Math.min(H, 16000);
+  const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, W, cv.height);
+  c.fillStyle = "#000"; c.font = "700 54px system-ui, -apple-system, sans-serif"; c.fillText("SEILLE · " + titulo.toUpperCase(), P, 92);
+  c.fillStyle = "#737373"; c.font = "400 32px system-ui, -apple-system, sans-serif"; c.fillText(`${gs.length} pedidos · ${dBR(today())}`, P, 142);
+  let y = 200;
+  const corta = (t, max) => { t = String(t||""); while(c.measureText(t).width > max && t.length > 3) t = t.slice(0, -2); return t === String(t) ? t : t; };
+  for(let k = 0; k < linhas.length; k++){
+    const {g, v, primeira} = linhas[k];
+    if(y > cv.height - 220) break;
+    if(primeira){
+      c.fillStyle = "#EDEDED"; c.fillRect(P, y, W - 2*P, 2); y += 46;
+      c.fillStyle = "#000"; c.font = "700 36px system-ui, -apple-system, sans-serif";
+      c.fillText(corta(`#${g.f.pedido || "—"} · ${g.f.cliente || ""}`, W - 2*P - 260), P, y);
+      c.fillStyle = "#737373"; c.font = "400 30px system-ui, -apple-system, sans-serif"; c.textAlign = "right"; c.fillText(dBR(g.f.data), W - P, y); c.textAlign = "left";
+      y += 24;
+    }
+    const im = fotos[k];
+    if(im){ const r = Math.max(FOTO / im.width, FOTO / im.height), w = im.width * r, h = im.height * r; c.save(); c.beginPath(); c.roundRect ? c.roundRect(P, y, FOTO, FOTO, 18) : c.rect(P, y, FOTO, FOTO); c.clip(); c.drawImage(im, P + (FOTO - w)/2, y, w, h); c.restore(); }
+    else { c.fillStyle = "#EDEDED"; c.fillRect(P, y, FOTO, FOTO); }
+    c.fillStyle = "#000"; c.font = "600 34px system-ui, -apple-system, sans-serif"; c.fillText(corta(String(v.produtoNome || "Peça").replace(/\s*\([^)]*\)\s*$/, ""), W - 2*P - FOTO - 40), P + FOTO + 28, y + 52);
+    c.fillStyle = "#333"; c.font = "400 30px system-ui, -apple-system, sans-serif"; c.fillText([tamanhoDe(v) ? "Tamanho " + tamanhoDe(v) : "", num(v.qtd) + (num(v.qtd) === 1 ? " unidade" : " unidades")].filter(Boolean).join(" · "), P + FOTO + 28, y + 98);
+    y += FOTO + 28;
+  }
+  if(H > 16000){ c.fillStyle = "#737373"; c.font = "400 30px system-ui, sans-serif"; c.fillText("A lista completa está no texto da mensagem.", P, cv.height - 40); }
+  return await new Promise(res => cv.toBlob(res, "image/png"));
+}
+async function enviarZap(){
+  if(zapGerando) return; const gs = pedidosPendentes(); if(!gs.length) return;
+  zapGerando = true; render();
+  const texto = textoPendentes(gs);
+  try{
+    let arquivo = null;
+    try{ const b = await imagemPendentes(gs); if(b) arquivo = new File([b], `seille-${PEDF === "env" ? "por-enviar" : "por-embalar"}-${today()}.png`, {type: "image/png"}); }catch(e){ console.error(e); }
+    if(arquivo && navigator.canShare?.({files: [arquivo]})){ await navigator.share({files: [arquivo], text: texto}); }
+    else if(navigator.share){ await navigator.share({text: texto}); }
+    else { window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank", "noopener"); }
+  }catch(e){ if(e?.name !== "AbortError"){ try{ await navigator.clipboard.writeText(texto); toast("Lista copiada. Cole no WhatsApp."); }catch(_){ toast("Não foi possível compartilhar"); } } }
+  zapGerando = false; render();
+}
 function vPedidos(){
   // com busca (nº do pedido, cliente, peça ou cidade) procura em todos os anos e meses
   const buscaGeral = !!PEDQ.trim() || !!PED_ROTULO[PEDF]; // busca e "por embalar/enviar" olham todas as datas
@@ -1223,6 +1292,7 @@ function vPedidos(){
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
   </div>
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
+  ${(PEDF === "emb" || PEDF === "env") && gs.length ? `<button class="btn pri listatoggle" data-zap>${zapGerando ? `<span class="spin"></span>Preparando a lista…` : `Enviar lista por WhatsApp (${gs.length})`}</button>` : ""}
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => fotoTag(u)).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
@@ -2815,6 +2885,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-trafconv]")){ openTrafConv(); return; }
   if(e.target.closest("[data-clinovos]")){ openClientesNovos(); return; }
   if(e.target.closest("[data-pecasped]")){ openPecasPedido(); return; }
+  if(e.target.closest("[data-zap]")){ enviarZap(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
   const cli = e.target.closest("[data-cliente]"); if(cli){ closeModal(); PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
