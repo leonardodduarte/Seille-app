@@ -1284,8 +1284,9 @@ async function pdfPendentes(gs){
   return doc.output("blob");
 }
 function resumoCurto(gs){
-  const t = textoPendentes(gs), corte = t.indexOf("\n\n🚚");
-  return (corte > 0 ? t.slice(0, corte) : t) + "\n\nLista completa com fotos no PDF.";
+  // só o título: a lista completa vai no PDF
+  const titulo = (PEDF === "env" ? "POR ENVIAR" : "POR EMBALAR") + (PEDENV ? " · " + PEDENV.toUpperCase() : "");
+  return `*SEILLE · PEDIDOS ${titulo}* (${gs.length}) · ${dBR(today())}`;
 }
 let pdfPronto = null;
 async function gerarPdf(){
