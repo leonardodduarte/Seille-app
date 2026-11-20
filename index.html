@@ -140,6 +140,8 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.zapbar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.zapbar .btn{justify-content:center;display:flex;align-items:center;gap:6px}
 .itemfoto{display:flex;align-items:center;gap:12px}
 .foto{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;background:var(--raised)}
 .foto.vazia{display:inline-block}
@@ -1209,53 +1211,90 @@ function textoPendentes(gs){
   });
   return linhas.join("\n");
 }
-// imagem com a lista (fotos das peças); se uma foto não puder ser usada, entra um quadrado cinza no lugar
+// ---------- PDF da lista (A4, legível no WhatsApp e para imprimir) ----------
+// carrega a foto da peça (miniatura); se não puder ser usada, devolve null e entra um quadrado cinza
 function carregaFoto(u){
   return new Promise(res => { if(!/^https:\/\//.test(u||"")) return res(null);
     const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => res(null); im.src = miniatura(u); setTimeout(() => res(null), 8000); });
 }
-async function imagemPendentes(gs){
-  const W = 1080, P = 48, FOTO = 132, titulo = PEDF === "env" ? "Pedidos por enviar" : "Pedidos por embalar";
-  const linhas = gs.flatMap(g => g.ls.map((v, i) => ({g, v, primeira: i === 0})));
-  const fotos = await Promise.all(linhas.map(l => carregaFoto(l.v.imagem)));
-  const H = 200 + linhas.length * (FOTO + 28) + gs.length * 70 + 60;
-  const cv = document.createElement("canvas"); cv.width = W; cv.height = Math.min(H, 16000);
-  const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, W, cv.height);
-  c.fillStyle = "#000"; c.font = "700 54px system-ui, -apple-system, sans-serif"; c.fillText("SEILLE · " + titulo.toUpperCase(), P, 92);
-  c.fillStyle = "#737373"; c.font = "400 32px system-ui, -apple-system, sans-serif"; c.fillText(`${gs.length} pedidos · ${dBR(today())}`, P, 142);
-  let y = 200;
-  const corta = (t, max) => { t = String(t||""); while(c.measureText(t).width > max && t.length > 3) t = t.slice(0, -2); return t === String(t) ? t : t; };
-  for(let k = 0; k < linhas.length; k++){
-    const {g, v, primeira} = linhas[k];
-    if(y > cv.height - 220) break;
-    if(primeira){
-      c.fillStyle = "#EDEDED"; c.fillRect(P, y, W - 2*P, 2); y += 46;
-      c.fillStyle = "#000"; c.font = "700 36px system-ui, -apple-system, sans-serif";
-      c.fillText(corta(`#${g.f.pedido || "—"} · ${g.f.cliente || ""}`, W - 2*P - 260), P, y);
-      c.fillStyle = "#737373"; c.font = "400 30px system-ui, -apple-system, sans-serif"; c.textAlign = "right"; c.fillText(dBR(g.f.data), W - P, y); c.textAlign = "left";
-      y += 24;
-    }
-    const im = fotos[k];
-    if(im){ const r = Math.max(FOTO / im.width, FOTO / im.height), w = im.width * r, h = im.height * r; c.save(); c.beginPath(); c.roundRect ? c.roundRect(P, y, FOTO, FOTO, 18) : c.rect(P, y, FOTO, FOTO); c.clip(); c.drawImage(im, P + (FOTO - w)/2, y, w, h); c.restore(); }
-    else { c.fillStyle = "#EDEDED"; c.fillRect(P, y, FOTO, FOTO); }
-    c.fillStyle = "#000"; c.font = "600 34px system-ui, -apple-system, sans-serif"; c.fillText(corta(String(v.produtoNome || "Peça").replace(/\s*\([^)]*\)\s*$/, ""), W - 2*P - FOTO - 40), P + FOTO + 28, y + 52);
-    c.fillStyle = "#333"; c.font = "400 30px system-ui, -apple-system, sans-serif"; c.fillText([tamanhoDe(v) ? "Tamanho " + tamanhoDe(v) : "", num(v.qtd) + (num(v.qtd) === 1 ? " unidade" : " unidades")].filter(Boolean).join(" · "), P + FOTO + 28, y + 98);
-    y += FOTO + 28;
-  }
-  if(H > 16000){ c.fillStyle = "#737373"; c.font = "400 30px system-ui, sans-serif"; c.fillText("A lista completa está no texto da mensagem.", P, cv.height - 40); }
-  return await new Promise(res => cv.toBlob(res, "image/png"));
+async function fotoDataURL(u){
+  const im = await carregaFoto(u); if(!im) return null;
+  try{ const L = 300, r = Math.max(L / im.width, L / im.height), cv = document.createElement("canvas"); cv.width = L; cv.height = L;
+    const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0,0,L,L); c.drawImage(im, (L - im.width*r)/2, (L - im.height*r)/2, im.width*r, im.height*r);
+    return cv.toDataURL("image/jpeg", 0.82); }catch(e){ return null; }
+}
+async function pdfPendentes(gs){
+  if(!window.jspdf) await loadScript("vendor/jspdf.min.js");
+  const {jsPDF} = window.jspdf, doc = new jsPDF({unit:"mm", format:"a4"});
+  const W = 210, H = 297, M = 14, titulo = PEDF === "env" ? "Pedidos por enviar" : "Pedidos por embalar";
+  const fotos = {}; const urls = [...new Set(gs.flatMap(g => g.ls.map(v => v.imagem)).filter(Boolean))];
+  await Promise.all(urls.map(async u => { fotos[u] = await fotoDataURL(u); }));
+  let y = 0, pag = 0;
+  const rodape = () => { doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(140); doc.text(`Seille · ${titulo} · ${dBR(today())} · página ${pag}`, W/2, H - 7, {align:"center"}); };
+  const novaPagina = () => { if(pag) { rodape(); doc.addPage(); } pag++; y = M; };
+  const cabe = h => { if(y + h > H - 14) novaPagina(); };
+  const foto = (u, x, yy, t) => { const d = fotos[u]; if(d) doc.addImage(d, "JPEG", x, yy, t, t); else { doc.setFillColor(237,237,237); doc.rect(x, yy, t, t, "F"); } };
+  const semTam = n => String(n||"Peça").replace(/\s*\([^)]*\)\s*$/, "");
+  novaPagina();
+  doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(0); doc.text("SEILLE · " + titulo.toUpperCase(), M, y + 7);
+  doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(110); doc.text(`${gs.length} pedidos · gerado em ${dBR(today())}`, M, y + 14); y += 24;
+  // resumo de peças (modelo + tamanho), com foto
+  const res = {}; gs.forEach(g => g.ls.forEach(v => { const k = semTam(v.produtoNome) + "|" + (tamanhoDe(v) || ""); const o = (res[k] ||= {nome: semTam(v.produtoNome), tam: tamanhoDe(v) || "", n: 0, img: v.imagem}); o.n += num(v.qtd); if(!o.img && v.imagem) o.img = v.imagem; }));
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Resumo de peças", M, y); y += 5;
+  const lista = Object.values(res).sort((a,b) => b.n - a.n || a.nome.localeCompare(b.nome)), col = 2, cw = (W - 2*M - 6) / col, ch = 18;
+  lista.forEach((o, i) => { if(i % col === 0){ cabe(ch + 2); } const x = M + (i % col) * (cw + 6), yy = y;
+    doc.setDrawColor(226); doc.roundedRect(x, yy, cw, ch, 2, 2, "S"); foto(o.img, x + 2, yy + 2, ch - 4);
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(0); doc.text(doc.splitTextToSize(o.nome, cw - ch - 20).slice(0,2), x + ch + 1, yy + 7);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(90); doc.text(o.tam ? "Tamanho " + o.tam : "", x + ch + 1, yy + 15);
+    doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(0); doc.text(o.n + "×", x + cw - 3, yy + 11.5, {align:"right"});
+    if(i % col === col - 1 || i === lista.length - 1) y += ch + 3; });
+  y += 6;
+  // pedidos
+  cabe(14); doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Pedidos (do mais antigo para o mais novo)", M, y); y += 6;
+  const F = 22;
+  gs.forEach(g => {
+    const f = g.f, alt = 9 + g.ls.length * (F + 3);
+    cabe(Math.min(alt, 9 + F + 3) + 2);
+    doc.setDrawColor(210); doc.line(M, y, W - M, y); y += 6;
+    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(0); doc.text(`#${f.pedido || "—"} · ${String(f.cliente || "").slice(0, 48)}`, M, y);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(110); doc.text([dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – ")].filter(Boolean).join(" · "), W - M, y, {align:"right"});
+    y += 3;
+    g.ls.forEach(v => { cabe(F + 3); foto(v.imagem, M, y, F);
+      doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(0); doc.text(doc.splitTextToSize(semTam(v.produtoNome), W - 2*M - F - 30).slice(0,2), M + F + 5, y + 7);
+      doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(70); doc.text(tamanhoDe(v) ? "Tamanho " + tamanhoDe(v) : "Tamanho —", M + F + 5, y + 17);
+      doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.setTextColor(0); doc.text(num(v.qtd) + "×", W - M, y + 12, {align:"right"});
+      y += F + 3; });
+    y += 2;
+  });
+  rodape();
+  return doc.output("blob");
+}
+function resumoCurto(gs){
+  const t = textoPendentes(gs), corte = t.indexOf("\n\n*Pedidos*");
+  return (corte > 0 ? t.slice(0, corte) : t) + "\n\nLista completa com fotos no PDF.";
+}
+let pdfPronto = null;
+async function gerarPdf(){
+  const gs = pedidosPendentes(); if(!gs.length) return null;
+  const b = await pdfPendentes(gs);
+  return {gs, arquivo: new File([b], `seille-${PEDF === "env" ? "por-enviar" : "por-embalar"}-${today()}.pdf`, {type: "application/pdf"})};
+}
+async function verPdf(){
+  if(zapGerando) return; zapGerando = "ver"; render();
+  try{ const r = await gerarPdf(); if(r){ const url = URL.createObjectURL(r.arquivo); const w = window.open(url, "_blank"); if(!w) location.href = url; setTimeout(() => URL.revokeObjectURL(url), 120000); } }
+  catch(e){ console.error(e); toast("Não foi possível gerar o PDF"); }
+  zapGerando = false; render();
 }
 async function enviarZap(){
-  if(zapGerando) return; const gs = pedidosPendentes(); if(!gs.length) return;
-  zapGerando = true; render();
-  const texto = textoPendentes(gs);
+  if(zapGerando) return; zapGerando = "zap"; render();
+  let texto = "";
   try{
-    let arquivo = null;
-    try{ const b = await imagemPendentes(gs); if(b) arquivo = new File([b], `seille-${PEDF === "env" ? "por-enviar" : "por-embalar"}-${today()}.png`, {type: "image/png"}); }catch(e){ console.error(e); }
-    if(arquivo && navigator.canShare?.({files: [arquivo]})){ await navigator.share({files: [arquivo], text: texto}); }
-    else if(navigator.share){ await navigator.share({text: texto}); }
-    else { window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank", "noopener"); }
-  }catch(e){ if(e?.name !== "AbortError"){ try{ await navigator.clipboard.writeText(texto); toast("Lista copiada. Cole no WhatsApp."); }catch(_){ toast("Não foi possível compartilhar"); } } }
+    const r = await gerarPdf(); if(!r){ zapGerando = false; render(); return; }
+    texto = resumoCurto(r.gs);
+    if(navigator.canShare?.({files: [r.arquivo]})) await navigator.share({files: [r.arquivo], text: texto});
+    else if(navigator.share) await navigator.share({text: textoPendentes(r.gs)});
+    else window.open("https://wa.me/?text=" + encodeURIComponent(textoPendentes(r.gs)), "_blank", "noopener");
+  }catch(e){ if(e?.name !== "AbortError"){ console.error(e); try{ await navigator.clipboard.writeText(texto || textoPendentes(pedidosPendentes())); toast("Lista copiada. Cole no WhatsApp."); }catch(_){ toast("Não foi possível compartilhar"); } } }
   zapGerando = false; render();
 }
 function vPedidos(){
@@ -1292,7 +1331,7 @@ function vPedidos(){
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
   </div>
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
-  ${(PEDF === "emb" || PEDF === "env") && gs.length ? `<button class="btn pri listatoggle" data-zap>${zapGerando ? `<span class="spin"></span>Preparando a lista…` : `Enviar lista por WhatsApp (${gs.length})`}</button>` : ""}
+  ${(PEDF === "emb" || PEDF === "env") && gs.length ? `<div class="zapbar"><button class="btn pri" data-zap ${zapGerando ? "disabled" : ""}>${zapGerando === "zap" ? `<span class="spin"></span>Preparando…` : `Enviar no WhatsApp`}</button><button class="btn" data-verpdf ${zapGerando ? "disabled" : ""}>${zapGerando === "ver" ? `<span class="spin"></span>Gerando…` : `Ver lista em PDF`}</button></div>` : ""}
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => fotoTag(u)).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
@@ -2886,6 +2925,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-clinovos]")){ openClientesNovos(); return; }
   if(e.target.closest("[data-pecasped]")){ openPecasPedido(); return; }
   if(e.target.closest("[data-zap]")){ enviarZap(); return; }
+  if(e.target.closest("[data-verpdf]")){ verPdf(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
   const cli = e.target.closest("[data-cliente]"); if(cli){ closeModal(); PEDQ = cli.dataset.cliente; PEDUF = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
