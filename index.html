@@ -140,6 +140,7 @@ select.st.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ob .s3{color:var(--ink2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filtros{display:flex;gap:8px;flex-wrap:wrap}
 .kclick{cursor:pointer}
+.chips.envios .chip{font-size:14px;padding:8px 14px}
 .zapbar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .zapbar .btn{justify-content:center;display:flex;align-items:center;gap:6px}
 .itemfoto{display:flex;align-items:center;gap:12px}
@@ -1193,21 +1194,40 @@ PED_GRUPO.atraso = PED_GRUPO.emb;
 const PED_ROTULO = {emb:"Por embalar", env:"Por enviar", atraso:"Por embalar há mais tempo"};
 // ---------- lista de pedidos por embalar / por enviar para mandar no WhatsApp ----------
 let zapGerando = false;
+// tipo de envio simplificado (a partir do nome que a Nuvemshop manda, ex.: "Melhor Envio - Jadlog .Package")
+function tipoEnvio(f){
+  const e = semAc(f.envio || "");
+  if(!e) return "Envio não informado";
+  if(/retir|pickup|loja fisica|ponto de retirada/.test(e)) return "Retirada";
+  if(/jadlog/.test(e)) return "Jadlog";
+  if(/sedex/.test(e)) return "Correios SEDEX";
+  if(/\bpac\b/.test(e)) return "Correios PAC";
+  if(/mini envios/.test(e)) return "Correios Mini Envios";
+  if(/loggi/.test(e)) return "Loggi";
+  if(/azul/.test(e)) return "Azul Cargo";
+  if(/correios/.test(e)) return "Correios";
+  if(/motoboy|entrega local|expresso/.test(e)) return "Entrega local / motoboy";
+  return String(f.envio).replace(/^melhor envio\s*-\s*/i, "").trim();
+}
+let PEDENV = "";
+function porEnvio(gs){ const m = {}; gs.forEach(g => (m[tipoEnvio(g.f)] ||= []).push(g)); return Object.entries(m).sort((a,b) => b[1].length - a[1].length || a[0].localeCompare(b[0])); }
 function pedidosPendentes(){
   const st = PED_GRUPO[PEDF === "env" ? "env" : "emb"];
-  return agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"") || String(a.f.pedido||"").localeCompare(String(b.f.pedido||""), undefined, {numeric:true}));
+  return agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))).filter(g => !PEDENV || tipoEnvio(g.f) === PEDENV).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"") || String(a.f.pedido||"").localeCompare(String(b.f.pedido||""), undefined, {numeric:true}));
 }
 function textoPendentes(gs){
   const titulo = PEDF === "env" ? "POR ENVIAR" : "POR EMBALAR";
   const resumo = {}; gs.forEach(g => g.ls.forEach(v => { const k = nomePeca(v); resumo[k] = (resumo[k]||0) + num(v.qtd); }));
   const linhas = [`*SEILLE · PEDIDOS ${titulo}* (${gs.length}) · ${dBR(today())}`, ``, `*Resumo de peças*`];
   Object.entries(resumo).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).forEach(([k,n]) => linhas.push(`• ${n}× ${k}`));
-  linhas.push(``, `*Pedidos* (do mais antigo para o mais novo)`);
-  gs.forEach(g => {
-    const f = g.f;
-    linhas.push(``, `*#${f.pedido || "—"}* · ${dBR(f.data)} · ${f.cliente || ""}`);
-    g.ls.forEach(v => linhas.push(`  – ${num(v.qtd)}× ${nomePeca(v)}`));
-    const local = [f.cidade, f.estado].filter(Boolean).join(" – "); if(local) linhas.push(`  📍 ${local}`);
+  const grupos = porEnvio(gs);
+  linhas.push(``, `*Por tipo de envio*`); grupos.forEach(([k,l]) => linhas.push(`• ${k}: ${l.length} ${l.length===1?"pedido":"pedidos"}`));
+  grupos.forEach(([k,l]) => {
+    linhas.push(``, `🚚 *${k.toUpperCase()}* (${l.length})`);
+    l.forEach(g => { const f = g.f;
+      linhas.push(``, `*#${f.pedido || "—"}* · ${dBR(f.data)} · ${f.cliente || ""}`);
+      g.ls.forEach(v => linhas.push(`  – ${num(v.qtd)}× ${nomePeca(v)}`));
+      const local = [f.cidade, f.estado].filter(Boolean).join(" – "); if(local) linhas.push(`  📍 ${local}`); });
   });
   return linhas.join("\n");
 }
@@ -1226,7 +1246,7 @@ async function fotoDataURL(u){
 async function pdfPendentes(gs){
   if(!window.jspdf) await loadScript("vendor/jspdf.min.js");
   const {jsPDF} = window.jspdf, doc = new jsPDF({unit:"mm", format:"a4"});
-  const W = 210, H = 297, M = 14, titulo = PEDF === "env" ? "Pedidos por enviar" : "Pedidos por embalar";
+  const W = 210, H = 297, M = 14, titulo = (PEDF === "env" ? "Pedidos por enviar" : "Pedidos por embalar") + (PEDENV ? " · " + PEDENV : "");
   const fotos = {}; const urls = [...new Set(gs.flatMap(g => g.ls.map(v => v.imagem)).filter(Boolean))];
   await Promise.all(urls.map(async u => { fotos[u] = await fotoDataURL(u); }));
   let y = 0, pag = 0;
@@ -1250,9 +1270,11 @@ async function pdfPendentes(gs){
     if(i % col === col - 1 || i === lista.length - 1) y += ch + 3; });
   y += 6;
   // pedidos
-  cabe(14); doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Pedidos (do mais antigo para o mais novo)", M, y); y += 6;
   const F = 22;
-  gs.forEach(g => {
+  porEnvio(gs).forEach(([envio, lista]) => {
+  cabe(30); y += 2; doc.setFillColor(0,0,0); doc.roundedRect(M, y, W - 2*M, 10, 2, 2, "F");
+  doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(255); doc.text(`${envio.toUpperCase()} · ${lista.length} ${lista.length===1?"pedido":"pedidos"}`, M + 4, y + 6.8); y += 16;
+  lista.forEach(g => {
     const f = g.f, alt = 9 + g.ls.length * (F + 3);
     cabe(Math.min(alt, 9 + F + 3) + 2);
     doc.setDrawColor(210); doc.line(M, y, W - M, y); y += 6;
@@ -1266,11 +1288,13 @@ async function pdfPendentes(gs){
       y += F + 3; });
     y += 2;
   });
+  y += 4;
+  });
   rodape();
   return doc.output("blob");
 }
 function resumoCurto(gs){
-  const t = textoPendentes(gs), corte = t.indexOf("\n\n*Pedidos*");
+  const t = textoPendentes(gs), corte = t.indexOf("\n\n🚚");
   return (corte > 0 ? t.slice(0, corte) : t) + "\n\nLista completa com fotos no PDF.";
 }
 let pdfPronto = null;
@@ -1308,7 +1332,7 @@ function vPedidos(){
   const qNum = /^#?\d+$/.test(PEDQ.trim()) ? PEDQ.trim().replace("#","") : "";
   const casa = v => qNum ? String(v.pedido||"").startsWith(qNum) : semAc([v.cliente, v.produtoNome, v.pedido, v.cidade, v.cupom].join(" ")).includes(q);
   const filtro = g => (!q || g.ls.some(casa)) && (!PEDUF || (g.f.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !g.f.cupom : PEDCUP === "__com" ? !!g.f.cupom : (g.f.cupom||"") === PEDCUP));
-  let gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF))).filter(filtro);
+  let gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF) && (!PEDENV || tipoEnvio(g.f) === PEDENV))).filter(filtro);
   if(PEDF === "atraso"){ const lim = addDays(today(), -(num(S.config.diasAlerta) || 7)); gs = gs.filter(g => (g.f.data||"") < lim).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"")); }
   const at = gs.filter(g => !g.cancelado);
   const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
@@ -1331,6 +1355,7 @@ function vPedidos(){
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
   </div>
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
+  ${(PEDF === "emb" || PEDF === "env") ? (() => { const st = PED_GRUPO[PEDF]; const base = agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))); const g2 = porEnvio(base); return g2.length > 1 || PEDENV ? `<div class="chips envios">${[["", "Todos os envios", base.length], ...g2.map(([k,l]) => [k, k, l.length])].map(([k,l,n]) => `<button class="chip${PEDENV===k?" on":""}" data-pedenv="${esc(k)}">${esc(l)}<span>${n}</span></button>`).join("")}</div>` : ""; })() : ""}
   ${(PEDF === "emb" || PEDF === "env") && gs.length ? `<div class="zapbar"><button class="btn pri" data-zap ${zapGerando ? "disabled" : ""}>${zapGerando === "zap" ? `<span class="spin"></span>Preparando…` : `Enviar no WhatsApp`}</button><button class="btn" data-verpdf ${zapGerando ? "disabled" : ""}>${zapGerando === "ver" ? `<span class="spin"></span>Gerando…` : `Ver lista em PDF`}</button></div>` : ""}
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
@@ -1338,7 +1363,7 @@ function vPedidos(){
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
       <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
       <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
-      ${f.cidade||f.estado||f.cupom||f.canal ? `<span class="s3">${[[f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
+      ${f.cidade||f.estado||f.cupom||f.canal||f.envio ? `<span class="s3">${[f.envio ? "🚚 " + tipoEnvio(f) : "", [f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
       <div class="orow"><span class="pill${PED_GRUPO.and.includes(g.status)?" acc":""}">${esc(g.status)}</span>${g.ls.some(ehTroca) ? `<span class="pill warn">${g.f.tipo === "troca" ? "troca" : "devolução"}</span>` : ""}
       <span class="val">${brl(g.total)}<div class="sub" style="font-weight:400;text-align:right">líquido ${g.real ? "" : "≈ "}${brl(g.liquido)}</div></span></div></div>
     <span class="chev">›</span></div>`; }).join("")}
@@ -1998,10 +2023,10 @@ async function csvContador(){
 // uma vez: busca de novo todas as vendas para trazer o detalhe dos descontos e os cancelados depois de pagos
 let sincDetalhe = false;
 async function sincronizarDetalhe(){
-  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos)) return;
+  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos && S.config.envioPedidos)) return;
   const desde = S.vendas.filter(v => v.nuvemshopId).map(v => v.data).filter(Boolean).sort()[0]; if(!desde) return;
   sincDetalhe = true; render();
-  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: today()}); toast("Pedidos atualizados com os detalhes e as fotos"); }
+  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: S.config.fotosPedidos || today(), envioPedidos: today()}); toast("Pedidos atualizados com os detalhes e as fotos"); }
   catch(e){ toast("A busca não terminou. Toque em Buscar agora para tentar de novo."); }
   sincDetalhe = false; render();
 }
@@ -2925,6 +2950,7 @@ document.addEventListener("click", e => {
   if(e.target.closest("[data-clinovos]")){ openClientesNovos(); return; }
   if(e.target.closest("[data-pecasped]")){ openPecasPedido(); return; }
   if(e.target.closest("[data-zap]")){ enviarZap(); return; }
+  const pe = e.target.closest("[data-pedenv]"); if(pe){ PEDENV = pe.dataset.pedenv; PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-verpdf]")){ verPdf(); return; }
   if(e.target.closest("[data-pedmin]")){ pedMin = !pedMin; try{ localStorage.setItem("seillePedMin", pedMin ? "1" : "0"); }catch(_){} render(); return; }
   const pg = e.target.closest("[data-pagar]"); if(pg && !pg.disabled){ marcarPago(pg); return; }
@@ -3013,7 +3039,7 @@ $("#atualizar").onclick = () => {
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
-  setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
+  setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos || !S.config.envioPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {

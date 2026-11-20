@@ -268,6 +268,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
       cliente: o.customer?.name || o.contact_name || o.billing_name || "",
       cidade: end.city || o.billing_city || "", estado: paraUF(end.province || o.billing_province),
       cupom, canal: "Nuvemshop", nuvemshopId: String(o.id), pagamento: o.gateway_name || o.gateway || "",
+      envio: String((typeof o.shipping_option === "object" ? (o.shipping_option?.name ?? o.shipping_option?.code) : o.shipping_option) ?? o.shipping_option_code ?? o.shipping ?? "").slice(0, 80),
       ...(parcelas ? { parcelas } : {}),
       ...(forma ? { formaPagamento: forma } : {}),
       ...(cancelado ? { canceladoEm: o.cancelled_at ? dataBR(o.cancelled_at) : (antes0?.canceladoEm || dataBR(o.updated_at || o.created_at)), foiPago: !!o.paid_at || !!doPedido.length } : {}),
