@@ -1969,13 +1969,33 @@ function vContador(){
 function painelFormas(gs){
   const vs = gs.filter(g => g.f.status !== "Cancelado");
   const forma = g => /pix/i.test(g.f.formaPagamento || "") ? "Pix" : (/cr[eé]dito/i.test(g.f.formaPagamento || "") || num(g.f.parcelas) > 1) ? "Cartão de crédito" : nomeForma(g.f.formaPagamento);
+  const custo = l => { const c = l.filter(g => g.real || g.porTabela); return {n: l.length, valor: l.reduce((a,g)=>a+g.total,0), tx: c.reduce((a,g)=>a+g.taxas,0), ju: c.reduce((a,g)=>a+g.juros,0), calc: c.length}; };
+  const fat = vs.reduce((a,g)=>a+g.total,0), tot = custo(vs), perd = tot.tx + tot.ju;
   const m = {}; vs.forEach(g => (m[forma(g)] ||= []).push(g));
-  const linhas = Object.entries(m).sort((a,b) => b[1].length - a[1].length).map(([k,l]) => {
-    const reais = l.filter(g => g.real || g.porTabela), tx = reais.reduce((a,g)=>a+g.taxas,0), ju = reais.reduce((a,g)=>a+g.juros,0), vr = reais.reduce((a,g)=>a+g.total,0);
-    return `<tr><td><b>${esc(k)}</b></td><td class="n">${l.length}</td><td class="n">${brl(l.reduce((a,g)=>a+g.total,0))}</td><td class="n">${reais.length ? brl(tx) : "—"}</td><td class="n">${reais.length ? brl(ju) : "—"}</td><td class="n"><b>${reais.length ? brl(tx+ju) : "—"}</b>${vr ? `<div class="sub">${pct((tx+ju)/vr,2)}</div>` : ""}</td><td class="n hide-m">${reais.length}/${l.length}</td></tr>`; }).join("");
-  return `<div class="panel"><h3>Cartão × Pix: quanto ficou com a operadora</h3>
+  const linha = (k, l, cls="") => { const c = custo(l), p = c.tx + c.ju;
+    return `<tr class="${cls}"><td><b>${esc(k)}</b></td><td class="n">${c.n}</td><td class="n">${brl(c.valor)}</td><td class="n hide-m">${brl(c.tx)}</td><td class="n hide-m">${brl(c.ju)}</td><td class="n"><b>${brl(p)}</b><div class="sub">${c.valor ? pct(p/c.valor,2) + " do valor" : ""}</div></td><td class="n">${c.n ? brl(p/c.n) : "—"}</td><td class="n">${fat ? pct(p/fat,2) : "—"}</td></tr>`; };
+  const linhas = Object.entries(m).sort((a,b) => b[1].length - a[1].length).map(([k,l]) => linha(k, l)).join("");
+  const pix = custo(m["Pix"] || []), cart = custo(m["Cartão de crédito"] || []);
+  // com Ano escolhido: mês a mês
+  let mensal = "";
+  if(anoTodo()){
+    const ano = MES.slice(0,4), rows = MESES.map((nm,i) => { const ym = ano + "-" + String(i+1).padStart(2,"0"); const l = vs.filter(g => (g.f.data||"").startsWith(ym)); return [ym, l]; }).filter(([,l]) => l.length);
+    mensal = `<h3 style="margin:16px 0 8px">Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th><th class="n">Faturamento</th><th class="n">Pix</th><th class="n">Cartão</th><th class="n">Total perdido</th><th class="n">% do faturamento</th></tr></thead><tbody>
+      ${rows.map(([ym,l]) => { const f = l.reduce((a,g)=>a+g.total,0), cp = custo(l.filter(g => forma(g) === "Pix")), cc = custo(l.filter(g => forma(g) === "Cartão de crédito")), ct = custo(l), p = ct.tx + ct.ju;
+        return `<tr><td>${ymLabel(ym)}</td><td class="n">${brl(f)}</td><td class="n">${brl(cp.tx+cp.ju)}</td><td class="n">${brl(cc.tx+cc.ju)}</td><td class="n"><b>${brl(p)}</b></td><td class="n">${f ? pct(p/f,2) : "—"}</td></tr>`; }).join("")}
+    </tbody></table></div>`;
+  }
+  return `<div class="panel"><h3>Custo das formas de pagamento (Pix e cartão)</h3>
     <p class="sub" style="margin:0 0 10px">Taxas e juros calculados pela tabela do Nuvem Pago (Ajustes → Taxas do Nuvem Pago), conforme a forma de pagamento e as parcelas de cada pedido.</p>
-    <div class="tw"><table><thead><tr><th>Forma</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n">Taxas</th><th class="n">Juros</th><th class="n">Perdido</th><th class="n hide-m">Calculados</th></tr></thead><tbody>${linhas || emptyRow(7, "Sem vendas no período", "")}</tbody></table></div></div>`;
+    <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px">
+      <div class="kpi"><span class="l">Total pago em taxas e juros</span><span class="v num">${brl(perd)}</span><span class="s"><b>${fat ? pct(perd/fat,2) : "—"}</b> do faturamento (${brl(fat)})</span></div>
+      <div class="kpi"><span class="l">Pix: média por pedido</span><span class="v num">${pix.n ? brl((pix.tx+pix.ju)/pix.n) : "—"}</span><span class="s">${pix.valor ? pct((pix.tx+pix.ju)/pix.valor,2) + " de cada venda no Pix" : "sem vendas no Pix"}</span></div>
+      <div class="kpi"><span class="l">Cartão: média por pedido</span><span class="v num">${cart.n ? brl((cart.tx+cart.ju)/cart.n) : "—"}</span><span class="s">${cart.valor ? pct((cart.tx+cart.ju)/cart.valor,2) + " de cada venda no cartão (taxa + juros)" : "sem vendas no cartão"}</span></div>
+    </div>
+    <div class="tw"><table><thead><tr><th>Forma</th><th class="n">Pedidos</th><th class="n">Valor</th><th class="n hide-m">Taxas</th><th class="n hide-m">Juros</th><th class="n">Perdido</th><th class="n">Média/pedido</th><th class="n">% do faturamento</th></tr></thead>
+    <tbody>${linhas || emptyRow(8, "Sem vendas no período", "")}</tbody>${vs.length ? `<tfoot>${linha("Total", vs)}</tfoot>` : ""}</table></div>
+    ${(m["Não informado"] || []).length ? `<p class="sub" style="margin:10px 0 0">⚠️ ${m["Não informado"].length} ${m["Não informado"].length===1?"pedido ainda está":"pedidos ainda estão"} sem a forma de pagamento e ${m["Não informado"].length===1?"entra":"entram"} com custo zero, o que deixa a % acima menor que a real. A busca completa na Nuvemshop (Ajustes → Loja Nuvemshop → Buscar pedidos desde 01/01/2025) preenche esse dado.</p>` : ""}
+    ${mensal}</div>`;
 }
 // Cartão de crédito: quanto custou (taxa + juros) cada número de parcelas, só com os valores reais informados pela loja
 function painelParcelado(gs){
