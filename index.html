@@ -20,6 +20,8 @@ img{max-width:100%}
 html,body,*{touch-action:manipulation;}
 html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 input,select,textarea{font-size:16px!important}
+.zaprow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.zapb{display:inline-flex;align-items:center}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -970,7 +972,7 @@ function painelEstados(){
         ${aberto ? `<div><button class="btn" data-pedidosuf="${esc(uf)}" style="margin-top:6px">Ver pedidos ${uf ? "de " + esc(uf) : "sem estado"} ›</button></div><div class="cids">${cid.slice(0,10).map(([c,oc]) => `<div><span>${esc(c)}</span><span>${oc.n} ${oc.n===1?"pedido":"pedidos"} · ${brl(oc.receita)}</span></div>`).join("")}${cid.length>10?`<div class="sub">+ ${cid.length-10} cidades</div>`:""}</div>` : ""}
       </div></div>`; }).join("");
   return dobra("estados", `Onde mais vendemos · ${esc(rotuloRecorte())}`, lista.length ? `${lista.filter(([uf])=>uf).length} estados` : "", `<div style="display:flex;flex-direction:column;gap:14px">
-    ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div>${lista.length > 5 ? `<button class="btn" data-regtodos style="align-self:center">${REGTODOS ? "Mostrar só os 5 primeiros ▴" : `Ver os outros ${lista.length - 5} estados ▾`}</button>` : ""}`
+    ${lista.length ? `<p class="sub" style="margin:0">${lista.filter(([uf])=>uf).length} ${lista.filter(([uf])=>uf).length===1?"estado":"estados"} · ${gs.length} pedidos · ${brl(tot)}. Toque num estado para ver as cidades.</p><div class="ufs">${linhas}</div><div class="zaprow" style="margin:0">${lista.length > 5 ? `<button class="btn" data-regtodos>${REGTODOS ? "Mostrar só os 5 primeiros ▴" : `Ver os outros ${lista.length - 5} estados ▾`}</button>` : ""}${zapBtn("estados", true)}</div>`
       : `<div class="empty"><b>Sem vendas no período</b>Os estados aparecem aqui conforme os pedidos entram.</div>`}
   </div>`);
 }
@@ -1082,7 +1084,7 @@ function painelClientes(c){
     <div class="tw"><table><thead><tr><th>Quem mais comprou</th><th class="n">Pedidos</th><th class="n">Total</th></tr></thead><tbody>
     ${top.length ? top.map(o => linhaCli(o)).join("") : emptyRow(3, "Sem vendas no período", "")}
     </tbody></table></div>
-    ${n > top.length ? `<button class="btn" data-todosclientes style="margin-top:12px">Ver todos os ${n} clientes</button>` : ""}`);
+    <div class="zaprow">${n > top.length ? `<button class="btn" data-todosclientes>Ver todos os ${n} clientes</button>` : ""}${zapBtn("clientes", true)}</div>`);
 }
 let CLIQ = "";
 function openTodosClientes(){
@@ -1105,6 +1107,45 @@ function openTodosClientes(){
   modalEl.addEventListener("click", e => { if(e.target === modalEl) closeModal(); });
   const filtra = () => { const q = semAc($("#cliq", modalEl).value); CLIQ = $("#cliq", modalEl).value; modalEl.querySelectorAll("#clitb tr[data-busca]").forEach(tr => tr.hidden = !!q && !tr.dataset.busca.includes(q)); };
   $("#cliq", modalEl).addEventListener("input", filtra); filtra();
+}
+// ---------- mandar cada bloco do Painel no WhatsApp (texto, um bloco por vez) ----------
+const ZAP_ICO = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.5.5 0 0 0 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.5-.3Z"/></svg>`;
+const zapBtn = (id, dentro) => `<button type="button" class="btn zapb" data-zapsec="${id}"${dentro ? "" : ` style="margin-top:12px"`}>${ZAP_ICO}Enviar no WhatsApp</button>`;
+function textoSecao(id){
+  const P = periodo(), A = anoTodo(), per = rotuloRecorte();
+  const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(MES.slice(0,4)) : calcMes(MES);
+  const cab = t => `*SEILLE · ${t}*\n${per}\n`;
+  const pc = v => c.receita ? ` (${pct(v / c.receita, 0)})` : "";
+  if(id === "dre"){
+    const l = [cab("DEMONSTRATIVO"), `Faturamento: *${brl(c.receita)}* · ${c.nPed} ${c.nPed===1?"pedido":"pedidos"}`, ``,
+      `– Custo das peças: ${brl(c.cpv)}${pc(c.cpv)}`, `– Taxas e juros: ${brl(c.gateway)}${pc(c.gateway)}`, `– Impostos: ${brl(c.imposto)}${pc(c.imposto)}`, `– Frete pago: ${brl(c.frete)}${pc(c.frete)}`,
+      `= *Margem de contribuição: ${brl(c.mc)}*${pc(c.mc)}`, ``,
+      `– Anúncios: ${brl(c.ads)}`, ...(c.gestao ? [`– Gestão de tráfego: ${brl(c.gestao)}`] : []), `– Custos variáveis: ${brl(c.avulsos)}`, `– Funcionárias: ${brl(c.equipe)}`, `– Coleções: ${brl(c.colecao)}`, `– Custos fixos: ${brl(c.fixos - (c.gestao||0))}`,
+      ...(c.trocas ? [`– Trocas e devoluções: ${brl(c.trocas)}`] : []), ``, `*Lucro: ${brl(c.lucro)}*${pc(c.lucro)}`];
+    return l.filter(x => !/: R\$\s*0,00/.test(x)).join("\n"); // linhas zeradas não vão
+  }
+  if(id === "estados"){
+    const gs = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data))).filter(g => !g.cancelado), tot = gs.reduce((a,g)=>a+g.total,0), m = {};
+    gs.forEach(g => { const o = (m[g.f.estado || ""] ||= {n:0, r:0}); o.n++; o.r += g.total; });
+    const lista = Object.entries(m).sort((a,b) => b[1].r - a[1].r);
+    return [cab("ONDE MAIS VENDEMOS"), `${gs.length} pedidos · ${brl(tot)}`, ``, ...lista.map(([uf,o], i) => `${i+1}. *${uf ? uf + " · " + (UF_NOME[uf]||uf) : "Estado não informado"}* — ${brl(o.r)} (${pct(tot ? o.r/tot : 0, 0)}) · ${o.n} ${o.n===1?"pedido":"pedidos"}`)].join("\n");
+  }
+  if(id === "pecas"){
+    const r = rankingPecas(c.vs), q = r.reduce((a,t)=>a+t.n,0);
+    return [cab("PEÇAS QUE MAIS VENDERAM"), `${r.length} modelos · ${intf(q)} peças · ${brl(c.receita)}`, ``, ...r.map((t,i) => `${i+1}. *${t.nome}* — ${t.n} un. · ${brl(t.receita)}`)].join("\n");
+  }
+  if(id === "clientes"){
+    const {lista, voltaram} = dadosClientes(c.vs), top = lista.slice(0, 10);
+    return [cab("CLIENTES"), `${lista.length} ${lista.length===1?"cliente comprou":"clientes compraram"} · ${voltaram} já ${voltaram===1?"comprou":"compraram"} mais de uma vez na loja`, ``, `*Quem mais comprou*`, ...top.map((o,i) => `${i+1}. ${o.nome} — ${o.n} ${o.n===1?"pedido":"pedidos"} · ${brl(o.total)}`), ...(lista.length > top.length ? [`+ ${lista.length - top.length} clientes`] : [])].join("\n");
+  }
+  return "";
+}
+async function enviarSecao(id){
+  const t = textoSecao(id); if(!t) return;
+  try{
+    if(navigator.share) await navigator.share({text: t});
+    else window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank", "noopener");
+  }catch(e){ if(e?.name !== "AbortError"){ try{ await navigator.clipboard.writeText(t); toast("Copiado. Cole no WhatsApp."); }catch(_){ toast("Não foi possível compartilhar"); } } }
 }
 // Blocos do Painel que abrem e fecham (como o Demonstrativo). Começam abertos; a escolha fica guardada neste aparelho.
 let FECHADOS = {}; try{ FECHADOS = JSON.parse(localStorage.getItem("painelFechados") || "{}") || {}; }catch(_){ FECHADOS = {}; }
@@ -1161,6 +1202,7 @@ function vPainel(){
         ${c.trocas ? dreRow("Trocas e devoluções", -c.trocas, "minus", "pedidos") : ""}
         ${dreRow("Lucro", c.lucro, "tot big")}
       </tbody></table>
+      ${zapBtn("dre")}
       ${estim ? `<p class="sub" style="margin:8px 0 0">≈ valor estimado: taxas de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde a loja não informou e impostos de ${num(S.config.imposto).toLocaleString("pt-BR")}% nos meses sem guia lançada em Impostos.</p>` : ""}
   </details>
   ${painelEstados()}
@@ -1169,7 +1211,7 @@ function vPainel(){
       <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
       ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
-      ${ranking.length > topArr.length ? `<button class="btn" data-todaspecas style="margin-top:12px">Ver todas as ${ranking.length} peças</button>` : ""}`)}
+      <div class="zaprow">${ranking.length > topArr.length ? `<button class="btn" data-todaspecas>Ver todas as ${ranking.length} peças</button>` : ""}${zapBtn("pecas", true)}</div>`)}
     ${painelClientes(c)}
   </div>`;
 }
@@ -2964,6 +3006,7 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  const zs = e.target.closest("[data-zapsec]"); if(zs){ enviarSecao(zs.dataset.zapsec); return; }
   if(e.target.closest("[data-vendasdia]")){
     // abre Pedidos com as vendas de hoje / ontem / esta semana (o mesmo recorte da visão rápida)
     const t = today(), dow = (new Date(t + "T12:00:00").getDay() + 6) % 7;
