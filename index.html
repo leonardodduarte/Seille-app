@@ -2267,7 +2267,8 @@ async function montaNotif(){
       const reg = await navigator.serviceWorker.ready;
       const {publica} = await window.seilleFuncao("nuvemshop", "push-chave");
       const s = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64uBytes(publica)});
-      await window.seilleFuncao("nuvemshop", "push-assinar", {assinatura: s.toJSON()});
+      let aparelho = ""; try{ aparelho = localStorage.getItem("seilleAparelho") || ""; if(!aparelho){ aparelho = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()); localStorage.setItem("seilleAparelho", aparelho); } }catch(_){}
+      await window.seilleFuncao("nuvemshop", "push-assinar", {assinatura: s.toJSON(), aparelho});
       await window.seilleFuncao("nuvemshop", "push-teste").catch(() => {});
       toast("Notificações ligadas");
     }catch(e){ console.error(e); toast("Não foi possível ativar. Tente de novo."); }

@@ -68,7 +68,13 @@ async function salvar(d: Dados) {
 }
 
 // ---------- notificações no celular (Web Push) ----------
-type Assinatura = { endpoint: string; keys: { p256dh: string; auth: string }; criadoEm?: string };
+// Marca uma ação como feita; devolve true só para quem marcou primeiro (vários avisos do mesmo pedido chegam juntos)
+async function primeiraVez(chave: string): Promise<boolean> {
+  const { data, error } = await admin.from("integracoes").upsert({ nome: chave, dados: { em: new Date().toISOString() }, atualizado_em: new Date().toISOString() }, { onConflict: "nome", ignoreDuplicates: true }).select("nome");
+  if (error) { console.error("primeiraVez", error); return true; }
+  return (data ?? []).length > 0;
+}
+type Assinatura = { endpoint: string; keys: { p256dh: string; auth: string }; criadoEm?: string; aparelho?: string };
 type Push = { publica?: string; privada?: string; assinaturas?: Assinatura[] };
 async function lerPush(): Promise<Push> {
   const { data } = await admin.from("integracoes").select("dados").eq("nome", "push").maybeSingle();
@@ -416,6 +422,7 @@ Deno.serve(async (req) => {
           for (const v of c.novos) {
             // só vendas recentes: um aviso atrasado de pedido antigo não vira notificação
             if (v.pagoEm && Date.now() - new Date(v.pagoEm).getTime() > 2 * 86400_000) continue;
+            if (!(await primeiraVez("aviso-venda-" + v.id))) continue;
             try {
               await avisar(`Nova venda · ${BRL.format(v.total)}`,
                 `${v.cliente || "Cliente"} · pedido #${v.pedido} · ${v.pecas} ${v.pecas === 1 ? "peça" : "peças"}`,
@@ -469,8 +476,10 @@ Deno.serve(async (req) => {
     const a = b.assinatura;
     if (!a || typeof a.endpoint !== "string" || !/^https:\/\//.test(a.endpoint) || !a.keys?.p256dh || !a.keys?.auth) return json({ code: "invalid_argument" }, 400);
     const p = await chavesPush();
-    const lista = (p.assinaturas ?? []).filter((s) => s.endpoint !== a.endpoint);
-    lista.push({ endpoint: a.endpoint, keys: { p256dh: String(a.keys.p256dh), auth: String(a.keys.auth) }, criadoEm: new Date().toISOString() });
+    // um aparelho = uma assinatura: ao ativar de novo, a anterior do mesmo aparelho sai (evita notificação repetida)
+    const aparelho = typeof b.aparelho === "string" ? b.aparelho.slice(0, 64) : "";
+    const lista = (p.assinaturas ?? []).filter((s) => s.endpoint !== a.endpoint && !(aparelho && s.aparelho === aparelho));
+    lista.push({ endpoint: a.endpoint, keys: { p256dh: String(a.keys.p256dh), auth: String(a.keys.auth) }, criadoEm: new Date().toISOString(), ...(aparelho ? { aparelho } : {}) });
     await salvarPush({ ...p, assinaturas: lista });
     return json({ ok: true, celulares: lista.length });
   }
