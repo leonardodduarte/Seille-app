@@ -289,6 +289,7 @@ async function importar(pedidos: any[]): Promise<Contagem> {
         produtoId: antes?.produtoId || prod?.id || "",
         produtoNome: antes?.produtoId ? antes.produtoNome : (prod?.nome ?? nomeProduto(p)),
         tamanho: variante(p), qtd: n(p.quantity) || 1, precoUnit: r2(n(p.price)),
+        ...(p.product_id ? { nsProdutoId: String(p.product_id) } : {}),
         ...(fotoDe(p) ? { imagem: fotoDe(p) } : {}),
         desconto: descDe(p, i), freteCobrado: i === 0 ? freteCobrado : 0,
         fretePago: antes ? n(antes.fretePago) : (i === 0 ? fretePago : 0),
@@ -530,6 +531,31 @@ Deno.serve(async (req) => {
       if (t.status === 401 || t.status === 403 || t.status === 404 && processados === 1) { /* transações não liberadas para este app */ }
     }
     return json({ processados, comValor, restantes: Math.max(0, (count ?? 0) - processados) });
+  }
+  // Catálogo da loja: categorias (coleções) e quais produtos estão em cada uma. Só leitura.
+  if (b.acao === "catalogo") {
+    if (!d.access_token) return json({ code: "nao_conectado" }, 400);
+    const todas = async (caminho: string) => {
+      const out: any[] = [];
+      for (let pg = 1; pg <= 30; pg++) {
+        const r = await ns(d, `${caminho}${caminho.includes("?") ? "&" : "?"}per_page=200&page=${pg}`);
+        if (r.status === 404 && pg > 1) break;
+        if (!r.ok) { if (pg === 1) throw new Error(`${caminho} ${r.status}`); break; }
+        const l = await r.json(); if (!Array.isArray(l) || !l.length) break;
+        out.push(...l); if (l.length < 200) break;
+      }
+      return out;
+    };
+    const txt = (v: any) => typeof v === "string" ? v : (v?.pt ?? Object.values(v ?? {})[0] ?? "");
+    try {
+      const [cats, prods] = await Promise.all([todas("/categories"), todas("/products")]);
+      return json({
+        categorias: cats.map((c) => ({ id: String(c.id), nome: String(txt(c.name)), pai: c.parent ? String(c.parent) : "" })),
+        produtos: prods.map((p) => ({ id: String(p.id), nome: String(txt(p.name)), publicado: p.published !== false, criadoEm: p.created_at ?? null,
+          imagem: String(p.images?.[0]?.src ?? ""), cats: (p.categories ?? []).map((c: any) => String(c?.id ?? c)) })),
+        buscadoEm: new Date().toISOString(),
+      });
+    } catch (e) { return json({ code: "falha", message: String(e).slice(0, 200) }, 502); }
   }
   // Carrinhos abandonados (a Nuvemshop guarda os dos últimos dias). Só leitura; nada é gravado.
   if (b.acao === "carrinhos") {
