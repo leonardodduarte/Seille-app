@@ -1461,11 +1461,14 @@ function compraDepois(c){
   const gs = agrupaPedidos(S.vendas.filter(v => ativa(v) && semAc(v.cliente) === k && (v.data||"") >= d));
   return gs.length ? gs.sort((a,b) => (a.f.data||"").localeCompare(b.f.data||""))[0] : null;
 }
+// dia do carrinho no horário do Brasil (o do aparelho)
+const diaCarr = c => { const d = new Date(c.criadoEm); return isNaN(d) ? "" : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const carrNoRecorte = () => (CARR.lista || []).filter(c => noRecorte(diaCarr(c)));
 function vCarrinhos(){
   if(!CARR.lista && !CARR.carregando && !CARR.erro){ setTimeout(carregaCarrinhos, 0); }
   if(CARR.erro) return `<div class="banner warn">${esc(CARR.erro)}</div><button class="btn" data-carrrec>Tentar de novo</button>`;
   if(!CARR.lista) return `<div class="empty"><b>Buscando carrinhos na Nuvemshop…</b>Isso leva alguns segundos.</div>`;
-  const todos = CARR.lista.map(c => ({...c, comprou: compraDepois(c)}));
+  const todos = carrNoRecorte().map(c => ({...c, comprou: compraDepois(c)}));
   const abertos = todos.filter(c => !c.comprou), recup = todos.filter(c => c.comprou);
   const lista = CARRQ === "recup" ? recup : CARRQ === "todos" ? todos : abertos;
   const soma = l => l.reduce((a,c) => a + c.total, 0);
@@ -1488,8 +1491,8 @@ function vCarrinhos(){
       <div class="kpi"><span class="l">Compraram depois</span><span class="v num">${recup.length}</span><span class="s">${todos.length ? pct(recup.length/todos.length, 0) : "—"} dos carrinhos</span></div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="seg" role="group">${seg2}</div><button class="btn" data-carrrec${CARR.carregando ? " disabled" : ""}>${CARR.carregando ? "Atualizando…" : "Atualizar"}</button></div>
-    <p class="sub" style="margin:0">A Nuvemshop guarda os carrinhos dos últimos dias. "Compraram depois" = a mesma cliente fez um pedido depois do carrinho. Atualizado às ${new Date(CARR.em).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}.</p>
-    ${lista.length ? lista.map(card).join("") : `<div class="empty"><b>Nenhum carrinho aqui</b>${CARRQ === "abertos" ? "Todo mundo que deixou o carrinho acabou comprando 🎉" : ""}</div>`}`;
+    <p class="sub" style="margin:0">Carrinhos de <b>${esc(rotuloRecorte())}</b> (siga o mês ou período escolhido em cima). A Nuvemshop guarda os carrinhos dos últimos dias${CARR.lista.length ? `; o mais antigo disponível é de ${dBR(CARR.lista.map(diaCarr).filter(Boolean).sort()[0])}` : ""}. "Compraram depois" = a mesma cliente fez um pedido depois do carrinho. Atualizado às ${new Date(CARR.em).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}.</p>
+    ${lista.length ? lista.map(card).join("") : `<div class="empty"><b>Nenhum carrinho aqui</b>${!todos.length ? `Nenhum carrinho abandonado em ${esc(rotuloRecorte())}.` : CARRQ === "abertos" ? "Todo mundo que deixou o carrinho acabou comprando 🎉" : ""}</div>`}`;
 }
 function vPedidos(){
   // com busca (nº do pedido, cliente, peça ou cidade) procura em todos os anos e meses
@@ -1517,7 +1520,7 @@ function vPedidos(){
   const abertos = k => new Set(S.vendas.filter(v => PED_GRUPO[k].includes(v.status || "Recebido")).map(chavePed)).size;
   const doRecorte = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data)));
   const nAba = {todos: doRecorte.length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
-  nAba.carr = CARR.lista ? CARR.lista.length : "";
+  nAba.carr = CARR.lista ? carrNoRecorte().length : "";
   const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"],["carr","Carrinhos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
   if(PEDF === "carr") return `<div class="seg full">${seg}</div>${vCarrinhos()}`;
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
