@@ -22,6 +22,7 @@ html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 input,select,textarea{font-size:16px!important}
 .zaprow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
 .zapb{display:inline-flex;align-items:center}
+.zapbs{display:inline-flex;gap:8px;flex-wrap:wrap}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -999,7 +1000,7 @@ const modeloDe = v => { const p = v.produtoId && S.produtos.find(x => x.id === v
 const tamanhoDe = v => v.tamanho || (/\(([^)]*)\)\s*$/.exec(v.produtoNome || "") || [])[1] || "";
 function rankingPecas(vs){
   const top = {};
-  for(const v of vs){ const m = modeloDe(v); const t = (top[m.k] ||= {nome:m.nome, n:0, receita:0, lucro:0, tam:{}}); const vc = vendaCalc(v); t.n += num(v.qtd); t.receita += vc.receita; t.lucro += vc.lucro; const tm = tamanhoDe(v); if(tm) t.tam[tm] = (t.tam[tm]||0) + num(v.qtd); }
+  for(const v of vs){ const m = modeloDe(v); const t = (top[m.k] ||= {nome:m.nome, n:0, receita:0, lucro:0, tam:{}}); if(!t.img && /^https:\/\//.test(v.imagem||"")) t.img = v.imagem; const vc = vendaCalc(v); t.n += num(v.qtd); t.receita += vc.receita; t.lucro += vc.lucro; const tm = tamanhoDe(v); if(tm) t.tam[tm] = (t.tam[tm]||0) + num(v.qtd); }
   return Object.values(top).sort((a,b) => b.n - a.n || b.receita - a.receita);
 }
 let PECQ = "";
@@ -1110,7 +1111,88 @@ function openTodosClientes(){
 }
 // ---------- mandar cada bloco do Painel no WhatsApp (texto, um bloco por vez) ----------
 const ZAP_ICO = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.5.5 0 0 0 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.5-.3Z"/></svg>`;
-const zapBtn = (id, dentro) => `<button type="button" class="btn zapb" data-zapsec="${id}"${dentro ? "" : ` style="margin-top:12px"`}>${ZAP_ICO}Enviar no WhatsApp</button>`;
+const zapBtn = (id, dentro) => { const g = zapGerando === "sec-" + id;
+  return `<span class="zapbs"${dentro ? "" : ` style="margin-top:12px"`}><button type="button" class="btn zapb" data-zappdf="${id}"${g ? " disabled" : ""}>${ZAP_ICO}${g ? "Gerando PDF…" : "Enviar PDF"}</button><button type="button" class="btn zapb" data-zapsec="${id}">Enviar texto</button></span>`; };
+const TIT_SEC = {dre:"Demonstrativo", estados:"Onde mais vendemos", pecas:"Peças que mais venderam", clientes:"Clientes"};
+// PDF de um bloco do Painel (A4). Nas peças entra a foto de cada modelo.
+async function pdfSecao(id){
+  if(!window.jspdf) await loadScript("vendor/jspdf.min.js");
+  const {jsPDF} = window.jspdf, doc = new jsPDF({unit:"mm", format:"a4"});
+  const P = periodo(), A = anoTodo(), per = rotuloRecorte(), tit = TIT_SEC[id];
+  const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(MES.slice(0,4)) : calcMes(MES);
+  const W = 210, H = 297, M = 14; let y = 0, pag = 0;
+  const rodape = () => { doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(140); doc.text(`Seille · ${tit} · ${per} · página ${pag}`, W/2, H - 7, {align:"center"}); };
+  const novaPagina = () => { if(pag){ rodape(); doc.addPage(); } pag++; y = M; };
+  const cabe = h => { if(y + h > H - 14) novaPagina(); };
+  const txt = (t, x, yy, {tam = 10, negrito = false, cor = 0, dir = false} = {}) => { doc.setFont("helvetica", negrito ? "bold" : "normal"); doc.setFontSize(tam); doc.setTextColor(cor); doc.text(String(t), x, yy, dir ? {align:"right"} : undefined); };
+  const linha = () => { doc.setDrawColor(225); doc.line(M, y, W - M, y); };
+  const cabecalho = sub => { novaPagina(); txt("SEILLE · " + tit.toUpperCase(), M, y + 7, {tam:20, negrito:true}); txt(per, M, y + 14, {tam:12, cor:70}); if(sub) txt(sub, M, y + 20, {tam:10, cor:110}); y += sub ? 30 : 24; };
+  const pc = v => c.receita ? pct(v / c.receita, 0) : "";
+  if(id === "dre"){
+    cabecalho(`${c.nPed} ${c.nPed===1?"pedido":"pedidos"}`);
+    const rows = [["Faturamento", c.receita, "big"], ["Custo das peças", -c.cpv], ["Taxas e juros", -c.gateway], ["Impostos", -c.imposto], ["Frete pago", -c.frete], ["Margem de contribuição", c.mc, "tot"],
+      ["Anúncios", -c.ads], ["Gestão de tráfego", -(c.gestao||0)], ["Custos variáveis", -c.avulsos], ["Funcionárias", -c.equipe], ["Coleções", -c.colecao], ["Custos fixos", -(c.fixos - (c.gestao||0))], ["Trocas e devoluções", -(c.trocas||0)], ["Lucro", c.lucro, "big"]]
+      .filter(r => r[2] || Math.abs(r[1]) >= 0.005);
+    rows.forEach(([l, v, k]) => { const h = k ? 12 : 9; cabe(h);
+      if(k){ doc.setFillColor(k === "big" ? 0 : 238, k === "big" ? 0 : 238, k === "big" ? 0 : 238); doc.roundedRect(M, y, W - 2*M, h - 1, 2, 2, "F"); }
+      const cor = k === "big" ? 255 : 0, yy = y + (k ? 7.5 : 6);
+      txt(l, M + 4, yy, {tam: k ? 13 : 11, negrito: !!k, cor}); txt(brl(v), W - M - 26, yy, {tam: k ? 13 : 11, negrito: !!k, cor, dir:true}); txt(pc(Math.abs(v)), W - M - 4, yy, {tam:10, cor: k === "big" ? 200 : 110, dir:true});
+      y += h; if(!k){ linha(); } });
+  }
+  if(id === "estados"){
+    const gs = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data))).filter(g => !g.cancelado), tot = gs.reduce((a,g)=>a+g.total,0), m = {};
+    gs.forEach(g => { const uf = g.f.estado || ""; const o = (m[uf] ||= {n:0, r:0, cid:{}}); o.n++; o.r += g.total; const ci = g.f.cidade || "—"; o.cid[ci] = (o.cid[ci]||0) + g.total; });
+    const lista = Object.entries(m).sort((a,b) => b[1].r - a[1].r), max = lista.length ? lista[0][1].r : 1;
+    cabecalho(`${lista.filter(([u])=>u).length} estados · ${gs.length} pedidos · ${brl(tot)}`);
+    lista.forEach(([uf, o], i) => { cabe(19);
+      txt(i + 1, M + 3, y + 7, {tam:14, negrito:true}); txt(uf ? uf + " · " + (UF_NOME[uf]||uf) : "Estado não informado", M + 13, y + 7, {tam:12, negrito:true});
+      txt(brl(o.r), W - M - 16, y + 7, {tam:12, negrito:true, dir:true}); txt(pct(tot ? o.r/tot : 0, 0), W - M, y + 7, {tam:10, cor:110, dir:true});
+      doc.setFillColor(235,235,235); doc.roundedRect(M + 13, y + 9.5, W - 2*M - 13, 2.2, 1, 1, "F"); doc.setFillColor(0,0,0); doc.roundedRect(M + 13, y + 9.5, (W - 2*M - 13) * o.r / max, 2.2, 1, 1, "F");
+      const cids = Object.entries(o.cid).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k])=>k).join(", ");
+      txt(`${o.n} ${o.n===1?"pedido":"pedidos"} · ticket ${brl(o.r/o.n)}${cids && cids !== "—" ? " · " + cids : ""}`.slice(0, 110), M + 13, y + 16, {tam:9, cor:110});
+      y += 19; linha(); });
+  }
+  if(id === "pecas"){
+    const r = rankingPecas(c.vs), q = r.reduce((a,t)=>a+t.n,0), fotos = {};
+    toast("Carregando as fotos…");
+    await Promise.all([...new Set(r.map(t => t.img).filter(Boolean))].map(async u => { fotos[u] = await fotoDataURL(u); }));
+    cabecalho(`${r.length} modelos · ${intf(q)} peças · ${brl(c.receita)}`);
+    const F = 26;
+    r.forEach((t, i) => { cabe(F + 4);
+      const d = t.img && fotos[t.img]; if(d) doc.addImage(d, "JPEG", M, y, F, F); else { doc.setFillColor(237,237,237); doc.rect(M, y, F, F, "F"); }
+      txt(`${i + 1}.`, M + F + 5, y + 7, {tam:11, cor:110});
+      doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text(doc.splitTextToSize(t.nome, W - 2*M - F - 60).slice(0,2), M + F + 13, y + 7);
+      const tams = Object.entries(t.tam).sort((a,b) => b[1]-a[1]).map(([k,n]) => `${k}: ${n}`).join(" · ");
+      if(tams) txt("Tamanhos  " + tams, M + F + 13, y + 19, {tam:9.5, cor:90});
+      txt(brl(t.receita), M + F + 13, y + 24, {tam:10, cor:70});
+      txt(t.n + (t.n === 1 ? " peça" : " peças"), W - M, y + 12, {tam:16, negrito:true, dir:true});
+      txt(pc(t.receita) + " da receita", W - M, y + 18, {tam:9, cor:110, dir:true});
+      y += F + 2; linha(); y += 2; });
+  }
+  if(id === "clientes"){
+    const {lista, voltaram} = dadosClientes(c.vs), totP = lista.reduce((a,o)=>a+o.n,0), totV = lista.reduce((a,o)=>a+o.total,0);
+    cabecalho(`${lista.length} clientes · ${totP} pedidos · ${brl(totV)} · ${voltaram} já compraram mais de uma vez`);
+    const cab = () => { txt("CLIENTE", M + 10, y + 5, {tam:8.5, cor:120, negrito:true}); txt("PEDIDOS", W - M - 42, y + 5, {tam:8.5, cor:120, negrito:true, dir:true}); txt("TOTAL", W - M, y + 5, {tam:8.5, cor:120, negrito:true, dir:true}); y += 8; linha(); };
+    cab();
+    lista.forEach((o, i) => { if(y + 9 > H - 14){ novaPagina(); cab(); }
+      txt(i + 1, M + 6, y + 6, {tam:9, cor:120, dir:true}); txt(String(o.nome || "—").slice(0, 60), M + 10, y + 6, {tam:10.5, negrito: i < 3});
+      if(o.hist >= 2) txt(`${o.hist} pedidos na loja`, M + 10 + doc.getTextWidth(String(o.nome || "—").slice(0, 60)) + 3, y + 6, {tam:8.5, cor:130});
+      txt(o.n, W - M - 42, y + 6, {tam:10.5, dir:true}); txt(brl(o.total), W - M, y + 6, {tam:10.5, dir:true});
+      y += 9; linha(); });
+  }
+  rodape();
+  const nome = `SEILLE - ${tit.toUpperCase()} - ${per.replace(/\//g, "-")}.pdf`;
+  return new File([doc.output("blob")], nome, {type: "application/pdf"});
+}
+async function enviarPdfSecao(id){
+  if(zapGerando) return; zapGerando = "sec-" + id; render();
+  try{
+    const f = await pdfSecao(id), texto = `*SEILLE · ${TIT_SEC[id].toUpperCase()}* · ${rotuloRecorte()}`;
+    if(navigator.canShare?.({files: [f]})) await navigator.share({files: [f], text: texto});
+    else { const url = URL.createObjectURL(f), a = document.createElement("a"); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 120000); toast("PDF baixado. Anexe no WhatsApp."); }
+  }catch(e){ if(e?.name !== "AbortError"){ console.error(e); toast("Não foi possível gerar o PDF"); } }
+  zapGerando = false; render();
+}
 function textoSecao(id){
   const P = periodo(), A = anoTodo(), per = rotuloRecorte();
   const c = P ? calcPeriodo(P.de, P.ate) : A ? calcAno(MES.slice(0,4)) : calcMes(MES);
@@ -3006,6 +3088,7 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  const zp = e.target.closest("[data-zappdf]"); if(zp){ enviarPdfSecao(zp.dataset.zappdf); return; }
   const zs = e.target.closest("[data-zapsec]"); if(zs){ enviarSecao(zs.dataset.zapsec); return; }
   if(e.target.closest("[data-vendasdia]")){
     // abre Pedidos com as vendas de hoje / ontem / esta semana (o mesmo recorte da visão rápida)
