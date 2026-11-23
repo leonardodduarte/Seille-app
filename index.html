@@ -1492,7 +1492,8 @@ function clientesNovos(vs, de){
   Object.entries(per).forEach(([k, o]) => { o.primeira = prim[k] || ""; (o.primeira && o.primeira < de ? voltaram : novos).push(o); });
   const soma = l => l.reduce((a, o) => a + o.total, 0), ped = l => l.reduce((a, o) => a + o.n, 0);
   const tot = novos.length + voltaram.length;
-  return {novos, voltaram, tot, fatN: soma(novos), fatV: soma(voltaram), pedN: ped(novos), pedV: ped(voltaram), pctV: tot ? voltaram.length / tot : NaN};
+  const repetiram = [...novos, ...voltaram].filter(o => o.n > 1).sort((x, y) => y.n - x.n);
+  return {novos, voltaram, tot, repetiram, fatN: soma(novos), fatV: soma(voltaram), pedN: ped(novos), pedV: ped(voltaram), pctV: tot ? voltaram.length / tot : NaN};
 }
 function cardClientesNovos(c, cmp){
   const d = clientesNovos(c.vs, cmp.R.de);
@@ -1511,13 +1512,15 @@ function openClientesNovos(){
   modalEl.innerHTML = `<div class="modal largo">
     <div><h2>Clientes novos x que voltaram · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${dBR(R.de)} a ${dBR(R.ate)} comparado com ${dBR(RA.de)} a ${dBR(RA.ate)}. Novo = primeira compra na loja dentro do período. Voltou = já tinha comprado antes.</p></div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-      <div class="kpi"><span class="l">Novos</span><span class="v num">${a.novos.length}</span><span class="s">${brl(a.fatN)} · ticket ${brl_(div(a.fatN, a.pedN))}</span></div>
-      <div class="kpi"><span class="l">Voltaram a comprar</span><span class="v num">${a.voltaram.length}</span><span class="s">${brl(a.fatV)} · ticket ${brl_(div(a.fatV, a.pedV))}</span></div>
+      <div class="kpi"><span class="l">Clientes novos</span><span class="v num">${a.novos.length}</span><span class="s"><b>${a.pedN} ${a.pedN===1?"pedido":"pedidos"}</b> · ${brl(a.fatN)} · ticket ${brl_(div(a.fatN, a.pedN))}</span></div>
+      <div class="kpi"><span class="l">Clientes que voltaram</span><span class="v num">${a.voltaram.length}</span><span class="s"><b>${a.pedV} ${a.pedV===1?"pedido":"pedidos"}</b> · ${brl(a.fatV)} · ticket ${brl_(div(a.fatV, a.pedV))}</span></div>
     </div>
+    ${a.pedN + a.pedV !== a.tot ? `<p class="sub" style="margin:0">${a.tot} clientes fizeram ${a.pedN + a.pedV} pedidos — ${a.pedN + a.pedV - a.tot === 1 ? "1 pedido a mais veio" : `${a.pedN + a.pedV - a.tot} pedidos a mais vieram`} de quem comprou mais de uma vez no período${a.repetiram.length ? ` (${a.repetiram.map(o => `${esc(o.nome)}: ${o.n}`).join(", ")})` : ""}.</p>` : ""}
     <div class="tw"><table>
       <thead><tr><th></th><th class="n">${anoA}</th><th class="n">${anoB}</th></tr></thead>
       <tbody>
         ${linha("Clientes que compraram", a.tot, b.tot, intf, vrel(a.tot, b.tot))}
+        ${linha("Pedidos", a.pedN + a.pedV, b.pedN + b.pedV, intf, vrel(a.pedN + a.pedV, b.pedN + b.pedV))}
         ${linha("Novos", a.novos.length, b.novos.length, intf, vrel(a.novos.length, b.novos.length))}
         ${linha("Voltaram a comprar", a.voltaram.length, b.voltaram.length, intf, vrel(a.voltaram.length, b.voltaram.length))}
         ${linha("<b>% que voltaram</b>", a.pctV, b.pctV, pc, vpp(a.pctV, b.pctV))}
