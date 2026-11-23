@@ -164,6 +164,8 @@ details.dreBox[open]>summary{margin-bottom:12px}
 .rcard span{color:var(--muted);font-size:14px}
 .rcard:hover{border-color:#BDBDBD}
 .rnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.rnums>div.rclick{cursor:pointer}
+.rnums>div.rclick:hover{background:var(--raised)}
 .rnums>div{padding:12px 14px;display:flex;flex-direction:column;gap:2px;border-left:1px solid var(--line);min-width:0}
 .rnums>div:first-child{border-left:0}
 .rnums span{font-size:12px;color:var(--muted)}
@@ -449,7 +451,7 @@ const periodo = () => PER && ANO_VIEWS.includes(curView()) ? PER : null;
 const anoTodo = () => ANO && !PER && ANO_VIEWS.includes(curView());
 // A data entra no recorte escolhido (mês, ano todo ou período)?
 const noRecorte = d => { const p = periodo(); if(p) return !!d && d >= p.de && d <= p.ate; if(anoTodo()) return (d||"").startsWith(MES.slice(0,4)); return (d||"").slice(0,7) === MES; };
-const rotuloRecorte = () => { const p = periodo(); return p ? `${dBR(p.de)} a ${dBR(p.ate)}` : anoTodo() ? MES.slice(0,4) : ymLabel(MES); };
+const rotuloRecorte = () => { const p = periodo(); return p ? (p.de === p.ate ? dBR(p.de) : `${dBR(p.de)} a ${dBR(p.ate)}`) : anoTodo() ? MES.slice(0,4) : ymLabel(MES); };
 
 const custoPeca = p => num(p.tecidoMetros)*num(p.tecidoPrecoMetro) + num(p.aviamentos) + num(p.costura) + num(p.embalagem) + num(p.outros);
 const taxaPct = () => (num(S.config.taxaGateway) + num(S.config.imposto))/100;
@@ -885,8 +887,8 @@ function resumoRapido(){
     ${conferindo ? `<p class="sub" style="margin:0"><span class="spin"></span>Conferindo os status com a Nuvemshop… pode levar alguns minutos.</p>` : `<p class="sub" style="margin:0">Os status seguem a Nuvemshop. <button class="lnk" data-conferir>Conferir agora</button></p>`}
     <div class="seg">${abas}</div>
     <div class="rnums">
-      <div><span>Vendas</span><b>${gs.length}</b>${cmpR(gs.length, ga.length, String, true)}</div>
-      <div><span>Faturamento</span><b>${brl(fat)}</b>${cmpR(fat, fatA, brl)}</div>
+      <div class="rclick" data-vendasdia role="button" tabindex="0"><span>Vendas ›</span><b>${gs.length}</b>${cmpR(gs.length, ga.length, String, true)}</div>
+      <div class="rclick" data-vendasdia role="button" tabindex="0"><span>Faturamento ›</span><b>${brl(fat)}</b>${cmpR(fat, fatA, brl)}</div>
       <div><span>Ticket médio</span><b>${gs.length ? brl(fat/gs.length) : "—"}</b>${gs.length ? cmpR(fat/gs.length, ga.length ? fatA/ga.length : 0, brl) : (temAnt && ga.length ? `<small>${brl(fatA/ga.length)} em ${rotA}</small>` : "")}</div>
     </div>${temAnt ? `<p class="sub" style="margin:0">Comparado com ${fa[0] === fa[1] ? "o mesmo dia" : "os mesmos dias"} de ${fa[0].slice(0,4)}, dia inteiro.</p>` : ""}</div>`;
 }
@@ -2958,6 +2960,13 @@ document.addEventListener("click", e => {
   const pd = e.target.closest("[data-ped]"); if(pd){ openPedido(pd.dataset.ped); return; }
   if(e.target.closest("[data-taxfrete]")){ openTaxasFretes(); return; }
   if(e.target.closest("[data-todaspecas]")){ openTodasPecas(); return; }
+  if(e.target.closest("[data-vendasdia]")){
+    // abre Pedidos com as vendas de hoje / ontem / esta semana (o mesmo recorte da visão rápida)
+    const t = today(), dow = (new Date(t + "T12:00:00").getDay() + 6) % 7;
+    const [de, ate] = {hoje:[t,t], ontem:[addDays(t,-1),addDays(t,-1)], semana:[addDays(t,-dow),t]}[RAPIDO];
+    ANO = false; PER = {de, ate}; PEDF = "todos"; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; pedMin = false;
+    location.hash = "#pedidos"; return;
+  }
   if(e.target.closest("[data-conferir]")){ conferirAbertos(true); return; }
   const cpi = e.target.closest("[data-cupir]"); if(cpi){ closeModal(); PEDCUP = cpi.dataset.cupir; PEDQ = ""; PEDUF = ""; PEDF = "todos"; PEDLIM = 100; if(location.hash === "#pedidos") render(); else location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-cupons]")){ openCupons(); return; }
