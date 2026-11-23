@@ -23,6 +23,9 @@ input,select,textarea{font-size:16px!important}
 .zaprow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
 .zapb{display:inline-flex;align-items:center}
 .zapbs{display:inline-flex;gap:8px;flex-wrap:wrap}
+.carr{display:flex;flex-direction:column;gap:10px}
+.carrtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.carrprods{display:flex;flex-direction:column;gap:8px}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -1316,7 +1319,7 @@ let PEDF = "todos", PEDQ = "", PEDUF = "", PEDCUP = "", PEDLIM = 100;
 let pedMin = false; try{ pedMin = localStorage.getItem("seillePedMin") === "1"; }catch(_){}
 const semAc = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
 const PED_GRUPO = {and:["Recebido","Em produção","Pronto"], fin:["Enviado","Entregue"], can:["Cancelado"], emb:["Recebido","Em produção"], env:["Pronto"]};
-PED_GRUPO.atraso = PED_GRUPO.emb;
+PED_GRUPO.atraso = PED_GRUPO.emb; PED_GRUPO.carr = [];
 const PED_ROTULO = {emb:"Por embalar", env:"Por enviar", atraso:"Por embalar há mais tempo"};
 // ---------- lista de pedidos por embalar / por enviar para mandar no WhatsApp ----------
 let zapGerando = false;
@@ -1442,6 +1445,52 @@ async function enviarZap(){
   }catch(e){ if(e?.name !== "AbortError"){ console.error(e); try{ await navigator.clipboard.writeText(texto || textoPendentes(pedidosPendentes())); toast("Lista copiada. Cole no WhatsApp."); }catch(_){ toast("Não foi possível compartilhar"); } } }
   zapGerando = false; render();
 }
+// ---------- carrinhos abandonados (lidos na hora da Nuvemshop) ----------
+let CARR = {lista: null, carregando: false, erro: "", em: ""}, CARRQ = "abertos";
+async function carregaCarrinhos(){
+  if(CARR.carregando) return; CARR.carregando = true; CARR.erro = ""; render();
+  try{ const r = await window.seilleFuncao("nuvemshop", "carrinhos"); CARR.lista = (r.lista || []).sort((a,b) => String(b.criadoEm).localeCompare(String(a.criadoEm))); CARR.em = r.buscadoEm || new Date().toISOString(); }
+  catch(e){ console.error(e); const st = e?.nsStatus; CARR.erro = st === 401 || st === 403 ? "A Nuvemshop não liberou os carrinhos abandonados para o app. Em Ajustes → Nuvemshop, desconecte e conecte de novo para autorizar." : "Não foi possível buscar os carrinhos agora. Tente de novo em instantes."; }
+  CARR.carregando = false; render();
+}
+const soDig = t => String(t||"").replace(/\D/g, "");
+function telZap(t){ let d = soDig(t); if(!d) return ""; if(d.startsWith("00")) d = d.slice(2); if(d.length <= 11) d = "55" + d; return d; }
+// comprou depois? procura um pedido da mesma cliente (pelo nome) feito depois do carrinho
+function compraDepois(c){
+  const k = semAc(c.nome); if(!k) return null; const d = String(c.criadoEm||"").slice(0,10);
+  const gs = agrupaPedidos(S.vendas.filter(v => ativa(v) && semAc(v.cliente) === k && (v.data||"") >= d));
+  return gs.length ? gs.sort((a,b) => (a.f.data||"").localeCompare(b.f.data||""))[0] : null;
+}
+function vCarrinhos(){
+  if(!CARR.lista && !CARR.carregando && !CARR.erro){ setTimeout(carregaCarrinhos, 0); }
+  if(CARR.erro) return `<div class="banner warn">${esc(CARR.erro)}</div><button class="btn" data-carrrec>Tentar de novo</button>`;
+  if(!CARR.lista) return `<div class="empty"><b>Buscando carrinhos na Nuvemshop…</b>Isso leva alguns segundos.</div>`;
+  const todos = CARR.lista.map(c => ({...c, comprou: compraDepois(c)}));
+  const abertos = todos.filter(c => !c.comprou), recup = todos.filter(c => c.comprou);
+  const lista = CARRQ === "recup" ? recup : CARRQ === "todos" ? todos : abertos;
+  const soma = l => l.reduce((a,c) => a + c.total, 0);
+  const quando = iso => { if(!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}) + " " + d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
+  const card = c => { const tel = telZap(c.telefone), primeiro = (c.nome||"").trim().split(/\s+/)[0] || "";
+    const msg = `Oi${primeiro ? " " + primeiro : ""}! Tudo bem? Aqui é da Seille 🤍 Vi que você separou ${c.produtos.length === 1 ? "uma peça" : "algumas peças"} no nosso site e não finalizou a compra. Posso te ajudar com alguma dúvida?${c.link ? "\n\nSeu carrinho continua salvo aqui: " + c.link : ""}`;
+    return `<div class="panel carr">
+      <div class="carrtop"><div><b>${esc(c.nome || "Sem nome")}</b><div class="sub">${quando(c.criadoEm)}${c.cidade || c.estado ? " · " + esc([c.cidade, c.estado].filter(Boolean).join(" – ")) : ""}</div></div><div style="text-align:right"><b class="num">${brl(c.total)}</b>${c.comprou ? `<div><span class="pill good">Comprou depois · #${esc(c.comprou.f.pedido || "")}</span></div>` : ""}</div></div>
+      <div class="carrprods">${c.produtos.map(p => `<div class="itemfoto">${/^https?:\/\//.test(p.imagem||"") ? fotoTag(p.imagem.replace(/^http:/, "https:"), "foto") : `<span class="foto vazia"></span>`}<div>${esc(p.nome)}<div class="sub">${p.qtd}× ${brl(p.preco)}</div></div></div>`).join("")}</div>
+      ${c.cupom ? `<div class="sub">Cupom: <b>${esc(c.cupom)}</b></div>` : ""}
+      <div class="zaprow" style="margin-top:4px">
+        ${tel ? `<a class="btn zapb" href="https://wa.me/${tel}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ZAP_ICO}Chamar no WhatsApp</a>` : `<span class="sub">Sem telefone</span>`}
+        ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}?subject=${encodeURIComponent("Seu carrinho na Seille")}&body=${encodeURIComponent(msg)}">E-mail</a>` : ""}
+        ${c.link ? `<button class="btn" data-carrlink="${esc(c.link)}">Copiar link do carrinho</button>` : ""}
+      </div></div>`; };
+  const seg2 = [["abertos","Sem compra", abertos.length],["recup","Compraram", recup.length],["todos","Todos", todos.length]].map(([k,l,n]) => `<button class="${CARRQ===k?"on":""}" data-carrq="${k}">${l} <small>${n}</small></button>`).join("");
+  return `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="kpi"><span class="l">Abandonados</span><span class="v num">${todos.length}</span><span class="s">${brl(soma(todos))} em peças</span></div>
+      <div class="kpi"><span class="l">Ainda não compraram</span><span class="v num">${abertos.length}</span><span class="s">${brl(soma(abertos))} para recuperar</span></div>
+      <div class="kpi"><span class="l">Compraram depois</span><span class="v num">${recup.length}</span><span class="s">${todos.length ? pct(recup.length/todos.length, 0) : "—"} dos carrinhos</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="seg" role="group">${seg2}</div><button class="btn" data-carrrec${CARR.carregando ? " disabled" : ""}>${CARR.carregando ? "Atualizando…" : "Atualizar"}</button></div>
+    <p class="sub" style="margin:0">A Nuvemshop guarda os carrinhos dos últimos dias. "Compraram depois" = a mesma cliente fez um pedido depois do carrinho. Atualizado às ${new Date(CARR.em).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}.</p>
+    ${lista.length ? lista.map(card).join("") : `<div class="empty"><b>Nenhum carrinho aqui</b>${CARRQ === "abertos" ? "Todo mundo que deixou o carrinho acabou comprando 🎉" : ""}</div>`}`;
+}
 function vPedidos(){
   // com busca (nº do pedido, cliente, peça ou cidade) procura em todos os anos e meses
   const buscaGeral = !!PEDQ.trim() || !!PED_ROTULO[PEDF]; // busca e "por embalar/enviar" olham todas as datas
@@ -1468,7 +1517,9 @@ function vPedidos(){
   const abertos = k => new Set(S.vendas.filter(v => PED_GRUPO[k].includes(v.status || "Recebido")).map(chavePed)).size;
   const doRecorte = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data)));
   const nAba = {todos: doRecorte.length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
-  const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
+  nAba.carr = CARR.lista ? CARR.lista.length : "";
+  const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"],["carr","Carrinhos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
+  if(PEDF === "carr") return `<div class="seg full">${seg}</div>${vCarrinhos()}`;
   return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
@@ -3081,6 +3132,9 @@ document.addEventListener("click", e => {
     PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-modo]")){ ANO = false; PER = null; PEDLIM = 100; render(); return; }
   const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
+  if(e.target.closest("[data-carrrec]")){ carregaCarrinhos(); return; }
+  const cq = e.target.closest("[data-carrq]"); if(cq){ CARRQ = cq.dataset.carrq; render(); return; }
+  const cl = e.target.closest("[data-carrlink]"); if(cl){ navigator.clipboard?.writeText(cl.dataset.carrlink).then(() => toast("Link copiado"), () => toast(cl.dataset.carrlink)); return; }
   const pf2 = e.target.closest("[data-pedf]"); if(pf2){ PEDF = pf2.dataset.pedf; render(); return; }
   const cs = e.target.closest("[data-colsel]"); if(cs){ COLSEL = cs.dataset.colsel; render(); return; }
   const pf = e.target.closest("[data-pagf]"); if(pf){ PAGF = pf.dataset.pagf; render(); $("#pags")?.scrollIntoView({behavior:"smooth", block:"start"}); return; }

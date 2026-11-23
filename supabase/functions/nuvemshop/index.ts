@@ -531,6 +531,35 @@ Deno.serve(async (req) => {
     }
     return json({ processados, comValor, restantes: Math.max(0, (count ?? 0) - processados) });
   }
+  // Carrinhos abandonados (a Nuvemshop guarda os dos últimos dias). Só leitura; nada é gravado.
+  if (b.acao === "carrinhos") {
+    if (!d.access_token) return json({ code: "nao_conectado" }, 400);
+    const todos: any[] = [];
+    for (let pg = 1; pg <= 10; pg++) {
+      const r = await ns(d, `/checkouts?per_page=200&page=${pg}`);
+      if (r.status === 404 && pg > 1) break; // acabou
+      if (!r.ok) {
+        if (pg === 1) return json({ code: "falha", nsStatus: r.status, message: (await r.text()).slice(0, 200) }, 502);
+        break;
+      }
+      const l = await r.json(); if (!Array.isArray(l) || !l.length) break;
+      todos.push(...l); if (l.length < 200) break;
+    }
+    const n = (x: unknown) => { const v = parseFloat(String(x ?? "")); return isFinite(v) ? v : 0; };
+    const lista = todos.filter((c) => !c.completed_at).map((c) => ({
+      id: String(c.id), criadoEm: c.created_at ?? null, atualizadoEm: c.updated_at ?? null,
+      nome: c.contact_name || c.billing_name || c.shipping_name || "", email: c.contact_email || "",
+      telefone: c.contact_phone || c.billing_phone || c.shipping_phone || "",
+      cidade: c.shipping_city || c.billing_city || "", estado: c.shipping_province || c.billing_province || "",
+      total: n(c.total), subtotal: n(c.subtotal), desconto: n(c.discount), link: c.abandoned_checkout_url || "",
+      cupom: c.coupon?.code ?? (Array.isArray(c.coupon) ? c.coupon[0]?.code : "") ?? "",
+      produtos: (c.products ?? []).map((p: any) => ({
+        nome: typeof p.name === "object" ? (p.name?.pt ?? Object.values(p.name ?? {})[0] ?? "") : (p.name ?? ""),
+        qtd: n(p.quantity) || 1, preco: n(p.price), imagem: p.image?.src ?? (typeof p.image === "string" ? p.image : ""),
+      })),
+    }));
+    return json({ lista, buscadoEm: new Date().toISOString() });
+  }
   if (b.acao === "desconectar") {
     await salvar({});
     return json({ ok: true });
