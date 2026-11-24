@@ -181,6 +181,10 @@ const paraUF = (s: unknown) => {
 };
 const n = (v: unknown) => { const x = parseFloat(String(v ?? "0")); return isFinite(x) ? x : 0; };
 const r2 = (v: number) => Math.round(v * 100) / 100;
+const horaBR = (iso: string) => {
+  try { return new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+};
+const quandoBR = (iso: string) => iso ? `${dataBR(iso)} ${horaBR(iso)}` : "";
 const dataBR = (iso: string) => {
   try { return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }); } catch { return String(iso).slice(0, 10); }
 };
@@ -270,7 +274,8 @@ async function importar(pedidos: any[]): Promise<Contagem> {
     const metodo = String(o.payment_details?.method ?? o.payment_method ?? "").toLowerCase();
     const forma = /pix/.test(metodo) || /pix/i.test(String(o.gateway_name ?? "")) ? "Pix" : /credit|cartao|card/.test(metodo) ? "Cartão de crédito" : /debit/.test(metodo) ? "Cartão de débito" : /boleto|ticket/.test(metodo) ? "Boleto" : (metodo || "");
     const comum = {
-      data: dataBR(o.paid_at || o.created_at), pedido: String(o.number ?? o.id),
+      data: dataBR(o.paid_at || o.created_at), hora: horaBR(o.paid_at || o.created_at), pedido: String(o.number ?? o.id),
+      ...(o.created_at ? { feitoEm: quandoBR(o.created_at) } : {}), ...(o.paid_at ? { pagoEmBR: quandoBR(o.paid_at) } : {}),
       cliente: o.customer?.name || o.contact_name || o.billing_name || "",
       cidade: end.city || o.billing_city || "", estado: paraUF(end.province || o.billing_province),
       cupom, canal: "Nuvemshop", nuvemshopId: String(o.id), pagamento: o.gateway_name || o.gateway || "",

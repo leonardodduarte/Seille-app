@@ -1683,7 +1683,7 @@ function vPedidos(){
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => fotoTag(u)).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
     <div class="ob"><b>${esc(f.cliente || "Pedido")}${exBadge(f)}</b>
-      <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
+      <span class="s2">${[f.pedido ? "#" + f.pedido : "", dBR(f.data) + (f.hora ? " · " + f.hora : ""), g.qtd + (g.qtd === 1 ? " peça" : " peças")].filter(Boolean).map(esc).join(" · ")}</span>
       <span class="s3">${g.ls.map(v => esc(nomePeca(v)) + (num(v.qtd) > 1 ? " ×" + num(v.qtd) : "")).join(" + ")}</span>
       ${f.cidade||f.estado||f.cupom||f.canal||f.envio ? `<span class="s3">${[f.envio ? "🚚 " + tipoEnvio(f) : "", [f.cidade, f.estado].filter(Boolean).join(" – "), f.cupom ? "cupom " + f.cupom : "", g.frete ? "frete " + brl(g.frete) : "", f.canal||""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}
       <div class="orow"><span class="pill${PED_GRUPO.and.includes(g.status)?" acc":""}">${esc(g.status)}</span>${g.ls.some(ehTroca) ? `<span class="pill warn">${g.f.tipo === "troca" ? "troca" : "devolução"}</span>` : ""}
@@ -1985,6 +1985,7 @@ function openPedido(k){
   modalEl.innerHTML = `<form class="modal" novalidate>
     <div><h2>Pedido ${f.pedido ? "#" + esc(f.pedido) : ""}</h2>
       ${!g.real && f.nuvemshopId && !f.taxaManual ? `<p class="sub" id="taxaAviso" style="margin:4px 0 0"><span class="spin"></span>Buscando as taxas e os juros reais na Nuvemshop…</p>` : ""}
+      ${f.feitoEm ? `<p class="sub" style="margin:4px 0 0">Compra feita em <b>${esc(dBR(f.feitoEm.slice(0,10)))} às ${esc(f.feitoEm.slice(11))}</b>${f.pagoEmBR && f.pagoEmBR !== f.feitoEm && (f.pagoEmBR.slice(0,10) !== f.feitoEm.slice(0,10) || Math.abs((+f.pagoEmBR.slice(11,13)*60 + +f.pagoEmBR.slice(14,16)) - (+f.feitoEm.slice(11,13)*60 + +f.feitoEm.slice(14,16))) > 5) ? ` · pago em <b>${esc(dBR(f.pagoEmBR.slice(0,10)))} às ${esc(f.pagoEmBR.slice(11))}</b>` : ""}</p>` : ""}
       <p class="sub" style="margin:4px 0 0">${[f.cliente, dBR(f.data), [f.cidade, f.estado].filter(Boolean).join(" – "), f.pagamento, f.parcelas ? f.parcelas + "x" : "", f.canal].filter(Boolean).map(esc).join(" · ")}</p></div>
     <div class="tw"><table>
       <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Valor</th><th class="n hide-m">Custo</th></tr></thead>
@@ -2410,10 +2411,10 @@ async function csvContador(){
 // uma vez: busca de novo todas as vendas para trazer o detalhe dos descontos e os cancelados depois de pagos
 let sincDetalhe = false;
 async function sincronizarDetalhe(){
-  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos && S.config.envioPedidos)) return;
+  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos && S.config.envioPedidos && S.config.horaPedidos)) return;
   const desde = S.vendas.filter(v => v.nuvemshopId).map(v => v.data).filter(Boolean).sort()[0]; if(!desde) return;
   sincDetalhe = true; render();
-  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: S.config.fotosPedidos || today(), envioPedidos: today()}); toast("Pedidos atualizados com os detalhes e as fotos"); }
+  try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: S.config.fotosPedidos || today(), envioPedidos: S.config.envioPedidos || today(), horaPedidos: today()}); toast("Pedidos atualizados com os horários"); }
   catch(e){ toast("A busca não terminou. Toque em Buscar agora para tentar de novo."); }
   sincDetalhe = false; render();
 }
@@ -3447,7 +3448,7 @@ $("#atualizar").onclick = () => {
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
-  setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos || !S.config.envioPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
+  setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos || !S.config.envioPedidos || !S.config.horaPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });
   db.doc("config/geral").onSnapshot(snap => {
