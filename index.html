@@ -1659,7 +1659,9 @@ function vPedidos(){
   const qNum = /^#?\d+$/.test(PEDQ.trim()) ? PEDQ.trim().replace("#","") : "";
   const casa = v => qNum ? String(v.pedido||"").startsWith(qNum) : semAc([v.cliente, v.produtoNome, v.pedido, v.cidade, v.cupom].join(" ")).includes(q);
   const filtro = g => (!q || g.ls.some(casa)) && (!PEDUF || (g.f.estado||"") === PEDUF) && (!PEDCUP || (PEDCUP === "__sem" ? !g.f.cupom : PEDCUP === "__com" ? !!g.f.cupom : (g.f.cupom||"") === PEDCUP));
-  let gs = (PEDF === "todos" ? grupos : grupos.filter(g => noGrupo(g,PEDF) && (!PEDENV || tipoEnvio(g.f) === PEDENV))).filter(filtro);
+  // cancelados saem das listas; ficam só na aba própria (link no fim) e na busca
+  const nCanc = grupos.filter(g => g.cancelado).length;
+  let gs = (PEDF === "todos" ? grupos.filter(g => !g.cancelado || q) : grupos.filter(g => noGrupo(g,PEDF) && (!PEDENV || tipoEnvio(g.f) === PEDENV))).filter(filtro);
   if(PEDF === "atraso"){ const lim = addDays(today(), -(num(S.config.diasAlerta) || 7)); gs = gs.filter(g => (g.f.data||"") < lim).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"")); }
   const at = gs.filter(g => !g.cancelado);
   const ufs = [...new Set(todos.map(v => v.estado).filter(Boolean))].sort();
@@ -1673,12 +1675,13 @@ function vPedidos(){
   // abas como na Nuvemshop: por embalar / por enviar contam todas as datas (é o trabalho pendente); enviados e todos seguem o mês/ano/período
   const abertos = k => new Set(S.vendas.filter(v => PED_GRUPO[k].includes(v.status || "Recebido")).map(chavePed)).size;
   const doRecorte = agrupaPedidos(S.vendas.filter(v => noRecorte(v.data)));
-  const nAba = {todos: doRecorte.length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
+  const nAba = {todos: doRecorte.filter(g => !g.cancelado).length, can: doRecorte.filter(g => g.cancelado).length, emb: abertos("emb"), env: abertos("env"), fin: doRecorte.filter(g => PED_GRUPO.fin.includes(g.status)).length};
   nAba.carr = CARR.lista ? carrNoRecorte().length : "";
   const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"],["carr","Carrinhos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
   if(PEDF === "carr") return `<div class="seg full">${seg}</div>${vCarrinhos()}`;
   return `${S.produtos.length || LIMITADO()?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
+  ${PEDF === "can" ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Mostrando só os <b>pedidos cancelados</b> de ${esc(rotuloRecorte())}.</span><button class="btn" data-pedf="todos">Voltar para todos</button></div>` : ""}
   ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
   <div class="filtros">
     <input type="search" id="pedq" placeholder="Buscar cliente, peça, nº ou cidade" value="${esc(PEDQ)}" aria-label="Buscar pedido">
@@ -1699,6 +1702,7 @@ function vPedidos(){
       <span class="val">${brl(g.total)}<div class="sub" style="font-weight:400;text-align:right">líquido ${g.real ? "" : "≈ "}${brl(g.liquido)}</div></span></div></div>
     <span class="chev">›</span></div>`; }).join("")}
     ${pedMin ? "" : "</div>"}
+    ${PEDF === "todos" && nCanc && !q ? `<button class="btn" data-pedf="can" style="align-self:center">Ver ${nCanc} ${nCanc===1?"pedido cancelado":"pedidos cancelados"} ›</button>` : ""}
     ${!pedMin && gs.length > PEDLIM ? `<button class="btn" data-pedmais style="align-self:center">Mostrar mais pedidos (${gs.length - PEDLIM} restantes)</button>` : ""}
     <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)}${LUCRO() ? " · sobra " + brl(tl) : ""}</span></span></div>`
     : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Os pedidos pagos da loja Nuvemshop aparecem aqui automaticamente."}</div>`}
