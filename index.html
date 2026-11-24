@@ -1018,9 +1018,9 @@ function openTodasPecas(){
     <div><h2>Peças vendidas · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${r.length} modelos · ${intf(totN)} peças · ${brl(totR)} · da mais vendida para a menos vendida</p></div>
     <input type="search" id="pecq" placeholder="Buscar peça" value="${esc(PECQ)}" style="border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px">
     <div class="tw"><table>
-      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n hide-m">% das peças</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead>
-      <tbody id="pectb">${r.map((t,i) => `<tr data-busca="${esc(semAc(t.nome))}"><td><span class="sub">${i+1}.</span> <span class="lnk" data-peca="${esc(t.nome)}" role="button">${esc(t.nome)}</span>${Object.keys(t.tam).length ? `<div class="sub">${tams(t)}</div>` : ""}</td><td class="n"><b>${t.n}</b></td><td class="n hide-m">${pct(totN ? t.n/totN : 0)}</td><td class="n">${brl(t.receita)}</td><td class="n">${brl(t.lucro)}</td></tr>`).join("") || emptyRow(5, "Sem vendas no período", "")}</tbody>
-      ${r.length ? `<tfoot><tr><td>Total</td><td class="n">${intf(totN)}</td><td class="n hide-m">100%</td><td class="n">${brl(totR)}</td><td class="n">${brl(totL)}</td></tr></tfoot>` : ""}
+      <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n hide-m">% das peças</th><th class="n">Receita</th></tr></thead>
+      <tbody id="pectb">${r.map((t,i) => `<tr data-busca="${esc(semAc(t.nome))}"><td><span class="sub">${i+1}.</span> <span class="lnk" data-peca="${esc(t.nome)}" role="button">${esc(t.nome)}</span>${Object.keys(t.tam).length ? `<div class="sub">${tams(t)}</div>` : ""}</td><td class="n"><b>${t.n}</b></td><td class="n hide-m">${pct(totN ? t.n/totN : 0)}</td><td class="n">${brl(t.receita)}</td></tr>`).join("") || emptyRow(4, "Sem vendas no período", "")}</tbody>
+      ${r.length ? `<tfoot><tr><td>Total</td><td class="n">${intf(totN)}</td><td class="n hide-m">100%</td><td class="n">${brl(totR)}</td></tr></tfoot>` : ""}
     </table></div>
     <div class="mact"><button type="button" class="btn" id="fcancel">Fechar</button></div>
   </div>`;
@@ -1400,8 +1400,8 @@ function vPainel(){
   ${painelColecoesLoja(c)}
   <div class="grid2">
     ${dobra("pecas", "Peças que mais venderam", ranking.length ? `${ranking.length} peças` : "", `
-      <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th><th class="n">Sobra</th></tr></thead><tbody>
-      ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td><td class="n">${brl(v.lucro)}</td></tr>`).join("") : emptyRow(4,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
+      <div class="tw"><table><thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th></tr></thead><tbody>
+      ${topArr.length ? topArr.map(([k,v])=>`<tr class="click" data-peca="${esc(k)}"><td>${esc(k)} <span class="irseta" aria-hidden="true">›</span></td><td class="n">${v.n}</td><td class="n">${brl(v.receita)}</td></tr>`).join("") : emptyRow(3,P?"Sem vendas no período":A?"Sem vendas neste ano":"Sem vendas neste mês","Lance um pedido para ver o ranking das peças.")}
       </tbody></table></div>
       <div class="zaprow">${ranking.length > topArr.length ? `<button class="btn" data-todaspecas>Ver todas as ${ranking.length} peças</button>` : ""}${zapBtn("pecas", true)}</div>`)}
     ${painelClientes(c)}
