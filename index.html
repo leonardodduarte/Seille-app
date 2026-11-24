@@ -26,6 +26,8 @@ input,select,textarea{font-size:16px!important}
 .carr{display:flex;flex-direction:column;gap:10px}
 .carrtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .carrprods{display:flex;flex-direction:column;gap:8px}
+table.grade td,table.grade th{padding-left:6px;padding-right:6px}
+table.grade td:nth-child(2){min-width:140px}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -1443,6 +1445,24 @@ function pedidosPendentes(){
   const st = PED_GRUPO[PEDF === "env" ? "env" : "emb"];
   return agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))).filter(g => !PEDENV || tipoEnvio(g.f) === PEDENV).sort((a,b) => (a.f.data||"").localeCompare(b.f.data||"") || String(a.f.pedido||"").localeCompare(String(b.f.pedido||""), undefined, {numeric:true}));
 }
+// grade de peças por tamanho (modelo × tamanho), como na lista de produção
+const ORD_TAM = ["PP","P","M","G","GG","XG","EG","XGG"];
+function gradeTamanhos(gs){
+  const m = {}, tams = new Set();
+  gs.forEach(g => g.ls.forEach(v => { const nome = modeloDe(v).nome; let t = String(tamanhoDe(v) || "").trim().toUpperCase(); if(!t || /^(U|UN|UNICO|ÚNICO|TAMANHO ÚNICO|TAMANHO UNICO)$/.test(t)) t = "Único";
+    tams.add(t); const o = (m[nome] ||= {nome, tot: 0, t: {}}); o.t[t] = (o.t[t] || 0) + num(v.qtd); o.tot += num(v.qtd); }));
+  const peso = t => t === "Único" ? 999 : ORD_TAM.includes(t) ? ORD_TAM.indexOf(t) : /^\d+$/.test(t) ? 100 + +t : 500;
+  const cols = [...tams].sort((a,b) => peso(a) - peso(b) || a.localeCompare(b));
+  const linhas = Object.values(m).sort((a,b) => b.tot - a.tot || a.nome.localeCompare(b.nome));
+  const porCol = Object.fromEntries(cols.map(c => [c, linhas.reduce((a,l) => a + (l.t[c] || 0), 0)]));
+  return {cols, linhas, porCol, total: linhas.reduce((a,l) => a + l.tot, 0)};
+}
+function tabelaGrade(gs){
+  const d = gradeTamanhos(gs); if(!d.linhas.length) return "";
+  return `<div class="tw"><table class="grade"><thead><tr><th class="n">Nº</th><th>Peça</th>${d.cols.map(c => `<th class="n">${esc(c)}</th>`).join("")}<th class="n">Total</th></tr></thead>
+    <tbody>${d.linhas.map((l,i) => `<tr><td class="n sub">${i+1}</td><td>${esc(l.nome)}</td>${d.cols.map(c => `<td class="n">${l.t[c] || `<span class="sub">–</span>`}</td>`).join("")}<td class="n"><b>${l.tot}</b></td></tr>`).join("")}</tbody>
+    <tfoot><tr><td></td><td>Total</td>${d.cols.map(c => `<td class="n">${d.porCol[c]}</td>`).join("")}<td class="n">${d.total}</td></tr></tfoot></table></div>`;
+}
 function textoPendentes(gs){
   const titulo = PEDF === "env" ? "POR ENVIAR" : "POR EMBALAR";
   const resumo = {}; gs.forEach(g => g.ls.forEach(v => { const k = nomePeca(v); resumo[k] = (resumo[k]||0) + num(v.qtd); }));
@@ -1486,16 +1506,22 @@ async function pdfPendentes(gs){
   novaPagina();
   doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(0); doc.text("SEILLE · " + titulo.toUpperCase(), M, y + 7);
   doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(110); doc.text(`${gs.length} pedidos · gerado em ${dBR(today())}`, M, y + 14); y += 24;
-  // resumo de peças (modelo + tamanho), com foto
-  const res = {}; gs.forEach(g => g.ls.forEach(v => { const k = semTam(v.produtoNome) + "|" + (tamanhoDe(v) || ""); const o = (res[k] ||= {nome: semTam(v.produtoNome), tam: tamanhoDe(v) || "", n: 0, img: v.imagem}); o.n += num(v.qtd); if(!o.img && v.imagem) o.img = v.imagem; }));
-  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Resumo de peças", M, y); y += 5;
-  const lista = Object.values(res).sort((a,b) => b.n - a.n || a.nome.localeCompare(b.nome)), col = 2, cw = (W - 2*M - 6) / col, ch = 18;
-  lista.forEach((o, i) => { if(i % col === 0){ cabe(ch + 2); } const x = M + (i % col) * (cw + 6), yy = y;
-    doc.setDrawColor(226); doc.roundedRect(x, yy, cw, ch, 2, 2, "S"); foto(o.img, x + 2, yy + 2, ch - 4);
-    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(0); doc.text(doc.splitTextToSize(o.nome, cw - ch - 20).slice(0,2), x + ch + 1, yy + 7);
-    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(90); doc.text(o.tam ? "Tamanho " + o.tam : "", x + ch + 1, yy + 15);
-    doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(0); doc.text(o.n + "×", x + cw - 3, yy + 11.5, {align:"right"});
-    if(i % col === col - 1 || i === lista.length - 1) y += ch + 3; });
+  // peças por tamanho (modelo × tamanho)
+  const gd = gradeTamanhos(gs);
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Peças por tamanho", M, y); y += 4;
+  const cw = Math.min(16, (W - 2*M - 12 - 70 - 18) / Math.max(1, gd.cols.length)), xNome = M + 10, xTot = W - M, xCol = i => xTot - 18 - (gd.cols.length - 1 - i) * cw;
+  const cabG = () => { doc.setFillColor(0,0,0); doc.rect(M, y, W - 2*M, 8, "F"); doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255);
+    doc.text("Nº", M + 2, y + 5.5); doc.text("PEÇA", xNome, y + 5.5); gd.cols.forEach((c,i) => doc.text(c.toUpperCase(), xCol(i), y + 5.5, {align:"right"})); doc.text("TOTAL", xTot - 2, y + 5.5, {align:"right"}); y += 8; };
+  cabG();
+  gd.linhas.forEach((l, i) => { if(y + 8 > H - 14){ novaPagina(); cabG(); }
+    if(i % 2) { doc.setFillColor(245,245,245); doc.rect(M, y, W - 2*M, 8, "F"); }
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(120); doc.text(String(i + 1), M + 2, y + 5.5);
+    doc.setTextColor(0); doc.text(doc.splitTextToSize(l.nome, xCol(0) - cw - xNome)[0], xNome, y + 5.5);
+    gd.cols.forEach((c,ci) => { const v = l.t[c]; doc.setTextColor(v ? 0 : 170); doc.setFont("helvetica", v ? "bold" : "normal"); doc.text(v ? String(v) : "–", xCol(ci), y + 5.5, {align:"right"}); });
+    doc.setFont("helvetica","bold"); doc.setTextColor(0); doc.text(String(l.tot), xTot - 2, y + 5.5, {align:"right"}); y += 8; });
+  if(y + 9 > H - 14) novaPagina();
+  doc.setDrawColor(0); doc.line(M, y, W - M, y); doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(0); doc.text("Total", xNome, y + 6);
+  gd.cols.forEach((c,ci) => doc.text(String(gd.porCol[c]), xCol(ci), y + 6, {align:"right"})); doc.text(String(gd.total), xTot - 2, y + 6, {align:"right"}); y += 10;
   y += 6;
   // pedidos
   const F = 22;
@@ -1641,6 +1667,7 @@ function vPedidos(){
   <div class="seclbl">${PED_ROTULO[PEDF] && !PEDQ.trim() ? `Pedidos ${PED_ROTULO[PEDF].toLowerCase()}` : buscaGeral ? `Busca em todos os meses: “${esc(PEDQ.trim())}”` : `Pedidos de ${rotuloRecorte()}`}<span>${gs.length} ${gs.length===1?"pedido":"pedidos"}</span></div>
   ${(PEDF === "emb" || PEDF === "env") ? (() => { const st = PED_GRUPO[PEDF]; const base = agrupaPedidos(S.vendas.filter(v => st.includes(v.status || "Recebido"))); const g2 = porEnvio(base); return g2.length > 1 || PEDENV ? `<div class="chips envios">${[["", "Todos os envios", base.length], ...g2.map(([k,l]) => [k, k, l.length])].map(([k,l,n]) => `<button class="chip${PEDENV===k?" on":""}" data-pedenv="${esc(k)}">${esc(l)}<span>${n}</span></button>`).join("")}</div>` : ""; })() : ""}
   ${(PEDF === "emb" || PEDF === "env") && gs.length ? `<div class="zapbar"><button class="btn pri" data-zap ${zapGerando ? "disabled" : ""}>${zapGerando === "zap" ? `<span class="spin"></span>Preparando…` : `Enviar no WhatsApp`}</button><button class="btn" data-verpdf ${zapGerando ? "disabled" : ""}>${zapGerando === "ver" ? `<span class="spin"></span>Gerando…` : `Ver lista em PDF`}</button></div>` : ""}
+  ${(PEDF === "emb" || PEDF === "env") && gs.length ? dobra("grade", "Peças por tamanho", `${gradeTamanhos(gs).total} peças`, tabelaGrade(gs)) : ""}
   ${gs.length ? `<button class="btn listatoggle" data-pedmin>${pedMin ? `Mostrar a lista de pedidos ▾` : `Minimizar a lista ▴`}</button>` : ""}
   ${gs.length ? `${pedMin ? "" : `<div class="olist">`}${pedMin ? "" : gs.slice(0, PEDLIM).map(g => { const f = g.f; return `<div class="ocard" data-ped="${esc(g.k)}">
     ${(() => { const fs = g.ls.map(v => v.imagem).filter(u => /^https:\/\//.test(u||"")); return fs.length ? `<div class="avfotos">${fs.slice(0,2).map(u => fotoTag(u)).join("")}</div>` : `<div class="av">${esc(ini(f.cliente || f.produtoNome))}</div>`; })()}
