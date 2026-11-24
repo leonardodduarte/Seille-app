@@ -432,6 +432,8 @@ const CAT_GESTAO = "Gestão de tráfego"; // custo fixo da agência que faz a ge
 const CAT_AUTO = {"Funcionárias":"funcionarias", "Tráfego pago":"trafego", "Lançamento de coleções":"colecoes"};
 const CATS = GRUPOS.flatMap(g => g[1]).filter(c => !CAT_AUTO[c]);
 const CAT_FIXO = CATS, CAT_VAR = CATS;
+// Lucro, sobra e margens ficam escondidos até os custos estarem definidos (liga em Ajustes)
+const LUCRO = () => !!S.config.mostrarLucro;
 const CFG_DEF = {taxaGateway:4.99, imposto:6, margemAlvo:55, metaFaturamento:15000, diasAlerta:7, taxaPix:0.99, taxaCartao:3.93, juros1x:0, juros2x:2.5, juros3x:6.25, juros4x:6.67, juros5x:7.08, juros6x:7.5, juros7x:7.5, juros8x:7.5, juros9x:7.5, juros10x:7.5, juros11x:7.5, juros12x:7.5};
 const JUROS_CONFIRMADOS = [1,2,3,6]; // vistos em pedidos reais; os outros são aproximados até a Seille conferir na tabela do Nuvem Pago
 const FUNCOES = ["Costureira","Modelista","Cortadeira","Auxiliar de produção","Passadeira / acabamento","Atendimento e expedição","Outra"];
@@ -761,7 +763,7 @@ function openForm(col, doc, preset){
       box.innerHTML = `<span>Custo da peça <b>${brl(c.custo)}</b></span><span>Markup <b>${isFinite(c.markup)?c.markup.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"}</b></span><span>Margem de contribuição <b>${brl(c.mc)} · ${pct(c.mcPct)}</b></span><span>Preço para ${num(S.config.margemAlvo)}% de margem <b>${isFinite(c.sugerido)?brl(c.sugerido):"—"}</b></span>`;
     } else if(col === "vendas"){
       const c = vendaCalc(o); box.hidden = false;
-      box.innerHTML = `<span>Receita <b>${brl(c.receita)}</b></span><span>Custo das peças <b>${brl(c.cpv)}</b></span><span>Taxas e impostos <b>${brl(c.taxas)}</b></span><span>Sobra do pedido <b>${brl(c.lucro)}</b></span>`;
+      box.innerHTML = `<span>Receita <b>${brl(c.receita)}</b></span><span>Custo das peças <b>${brl(c.cpv)}</b></span><span>Taxas e impostos <b>${brl(c.taxas)}</b></span>${LUCRO() ? `<span>Sobra do pedido <b>${brl(c.lucro)}</b></span>` : ""}`;
     } else if(col === "trafego"){
       box.hidden = false;
       box.innerHTML = `<span>CPC <b>${o.cliques ? brl(num(o.investimento)/o.cliques) : "—"}</b></span><span>CTR <b>${o.impressoes ? pct(num(o.cliques)/o.impressoes,2) : "—"}</b></span>`;
@@ -1103,7 +1105,7 @@ function openColecaoLoja(id){
   closeModal();
   modalEl = document.createElement("div"); modalEl.className = "ov";
   modalEl.innerHTML = `<div class="modal largo">
-    <div><h2>${esc(o.cat.nome)} · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${brl(o.receita)} (${pct(d.total ? o.receita / d.total : 0, 0)} do faturamento) · ${intf(o.pecas)} peças · ${o.peds.size} pedidos · sobra ${brl(o.lucro)}</p></div>
+    <div><h2>${esc(o.cat.nome)} · ${esc(rotuloRecorte())}</h2><p class="sub" style="margin:4px 0 0">${brl(o.receita)} (${pct(d.total ? o.receita / d.total : 0, 0)} do faturamento) · ${intf(o.pecas)} peças · ${o.peds.size} pedidos${LUCRO() ? " · sobra " + brl(o.lucro) : ""}</p></div>
     <div class="tw"><table>
       <thead><tr><th>Peça</th><th class="n">Qtd</th><th class="n">Receita</th></tr></thead>
       <tbody>${vendidas.map(([k,p], i) => `<tr><td><div class="itemfoto">${foto(p.img)}<div><span class="sub">${i+1}.</span> ${esc(p.nome)}</div></div></td><td class="n"><b>${p.n}</b></td><td class="n">${brl(p.receita)}</td></tr>`).join("") || emptyRow(3, "Nenhuma peça desta coleção vendida no período", "")}
@@ -1369,14 +1371,14 @@ function vPainel(){
   </div>
   <details class="maisind"${maisInd ? " open" : ""}><summary data-maisind>${maisInd ? "Menos indicadores ▴" : "Ver mais indicadores ▾"}</summary>
   <div class="kpis kpis4">
-    <div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>
+    ${LUCRO() ? `<div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>` : ""}
     <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
-    <div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>
-    <div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>
+    ${LUCRO() ? `<div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>` : ""}
+    ${LUCRO() ? `<div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>` : ""}
     ${cardClientesNovos(c, cmp)}
     ${cardPecasPedido(c, cmp)}
   </div></details>
-  <details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
+  ${LUCRO() ? `<details class="panel dreBox"${dreAberto ? " open" : ""}><summary data-dre><h3>Demonstrativo ${P ? "de " + per : A ? "do ano de " + ano : "do mês"}</h3><span class="sub">Lucro ${brl(c.lucro)} · ${dreAberto ? "fechar ▴" : "ver detalhes ▾"}</span></summary>
       <table class="dre"><tbody>
         ${dreRow("Faturamento", c.receita, "big", "pedidos")}
         ${dreRow("Custo das peças", -c.cpv, "minus", "pecas")}
@@ -1395,7 +1397,7 @@ function vPainel(){
       </tbody></table>
       ${zapBtn("dre")}
       ${estim ? `<p class="sub" style="margin:8px 0 0">≈ valor estimado: taxas de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}% onde a loja não informou e impostos de ${num(S.config.imposto).toLocaleString("pt-BR")}% nos meses sem guia lançada em Impostos.</p>` : ""}
-  </details>
+  </details>` : ""}
   ${painelEstados()}
   ${painelColecoesLoja(c)}
   <div class="grid2">
@@ -1651,7 +1653,7 @@ function vPedidos(){
     <span class="chev">›</span></div>`; }).join("")}
     ${pedMin ? "" : "</div>"}
     ${!pedMin && gs.length > PEDLIM ? `<button class="btn" data-pedmais style="align-self:center">Mostrar mais pedidos (${gs.length - PEDLIM} restantes)</button>` : ""}
-    <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)} · sobra ${brl(tl)}</span></span></div>`
+    <div class="panel" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Total ${PEDF==="todos"?"(sem cancelados)":""}</span><span><b>${brl(tr)}</b> <span class="sub">· líquido ${algumEst?"≈ ":""}${brl(tliq)}${LUCRO() ? " · sobra " + brl(tl) : ""}</span></span></div>`
     : `<div class="panel empty"><b>Nenhum pedido aqui</b>${PEDQ||PEDUF||PEDCUP ? "Nenhum pedido com esses filtros." : "Os pedidos pagos da loja Nuvemshop aparecem aqui automaticamente."}</div>`}
   ${nPed ? `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
     <div class="kpi"><span class="l">Ticket médio</span><span class="v num">${brl(tr/nPed)}</span><span class="s">${nPed} ${nPed===1?"pedido":"pedidos"}</span></div>
@@ -1663,7 +1665,7 @@ function vPedidos(){
       <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n">Desconto dado</th><th class="n">Faturamento</th></tr></thead>
       <tbody>${pCup.map(([k,o]) => `<tr><td>${k ? esc(k) : `<span class="sub">Sem cupom</span>`}</td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.receita)}</td></tr>`).join("")}</tbody>
     </table></div></div>` : ""}
-  <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros. Sobra = líquido − custo das peças − frete pago − impostos. ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
+  <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros.${LUCRO() ? " Sobra = líquido − custo das peças − frete pago − impostos." : ""} ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
 }
 
 // Cupons: card no Painel e janela com o resumo por cupom (segue o mês, ano ou período escolhido)
@@ -1958,10 +1960,10 @@ function openPedido(k){
       ${L(g.real ? "Taxas" : g.porTabela ? `Taxas (tabela Nuvem Pago: ${tabelaTaxa(f).taxa.toLocaleString("pt-BR")}%)` : `Taxas (estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%)`, -g.taxas, "minus")}
       ${L("Juros", -g.juros, "minus")}
       ${L("Total líquido", g.liquido, "tot big")}
-      ${L("Custo das peças", -g.custo, "minus")}
+      ${LUCRO() ? `${L("Custo das peças", -g.custo, "minus")}
       ${L("Frete pago pela Seille", -g.fretePago, "minus")}
       ${L(`Impostos (estimativa de ${num(S.config.imposto).toLocaleString("pt-BR")}%)`, -g.imposto, "minus")}
-      ${L("Sobra do pedido", g.sobra, "tot")}
+      ${L("Sobra do pedido", g.sobra, "tot")}` : ""}
     </tbody></table>
     <div class="fgrid">
       <div class="f"><label for="pd_tx">Taxas (R$)</label><input id="pd_tx" name="taxas" type="number" step="0.01" min="0" inputmode="decimal" value="${g.real ? val(g.taxas) : ""}" placeholder="${val(g.taxas)} (estimativa)"><span class="h">Como aparece em Pagamento na Nuvemshop</span></div>
@@ -2491,6 +2493,7 @@ function vAjustes(){
   const k = S.config;
   const f = (key,label,h,step="0.01") => `<div class="f"><label for="c_${key}">${label}</label><input id="c_${key}" name="${key}" type="number" step="${step}" min="0" value="${esc(k[key])}" inputmode="decimal"><span class="h">${h}</span></div>`;
   return `<div class="head"><div><h2>Ajustes</h2></div></div>
+  <div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Mostrar lucro, sobra e margens</b><div class="sub">Deixe desligado enquanto os custos fixos, variáveis e de mão de obra das peças não estiverem definidos.</div></div><button type="button" class="btn${LUCRO() ? " pri" : ""}" data-lucrotg>${LUCRO() ? "Ligado" : "Desligado"}</button></div>
   <div class="seclbl">Valores<span>usados nos cálculos</span></div>
   <form class="panel" id="cfg" style="display:flex;flex-direction:column;gap:14px">
     <div class="fgrid">
@@ -3146,7 +3149,7 @@ function vColecoes(){
       <div class="kpi"><span class="l">Gasto no lançamento</span><span class="v num">${brl(st.gasto)}</span><span class="s">${st.aPagar ? brl(st.aPagar) + " ainda a pagar" : "Tudo pago"}</span></div>
       <div class="kpi"><span class="l">Orçamento</span><span class="v num">${orc ? brl(orc) : "—"}</span><span class="s">${orc ? (saldo >= 0 ? "Sobram " + brl(saldo) : "Estourou " + brl(-saldo)) : "Defina em Editar coleção"}</span></div>
       <div class="kpi"><span class="l">Faturamento da coleção</span><span class="v num">${brl(st.fat)}</span><span class="s">${st.pecas} ${st.pecas===1?"peça vendida":"peças vendidas"} de ${st.nProd} ${st.nProd===1?"modelo":"modelos"}${num(c.metaFaturamento) ? " · " + pct(st.fat/num(c.metaFaturamento),0) + " da meta" : ""}</span></div>
-      <div class="kpi"><span class="l">Retorno do lançamento</span><span class="v num ${isFinite(ret)?(ret>=1?"pos":"negv"):""}">${isFinite(ret) ? ret.toLocaleString("pt-BR",{maximumFractionDigits:2}) + "×" : "—"}</span><span class="s">${isFinite(ret) ? (ret >= 1 ? "As vendas já pagaram o lançamento" : "Faltam " + brl(st.gasto - st.mc) + " de sobra para pagar o lançamento") : "Sobra das vendas ÷ custo do lançamento"}</span></div>
+      ${LUCRO() ? `<div class="kpi"><span class="l">Retorno do lançamento</span><span class="v num ${isFinite(ret)?(ret>=1?"pos":"negv"):""}">${isFinite(ret) ? ret.toLocaleString("pt-BR",{maximumFractionDigits:2}) + "×" : "—"}</span><span class="s">${isFinite(ret) ? (ret >= 1 ? "As vendas já pagaram o lançamento" : "Faltam " + brl(st.gasto - st.mc) + " de sobra para pagar o lançamento") : "Sobra das vendas ÷ custo do lançamento"}</span></div>` : ""}
     </div>
     <div class="grid2">
       <div class="panel"><h3>Custos lançados</h3><div class="tw"><table>
@@ -3242,6 +3245,7 @@ document.addEventListener("click", e => {
     PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-modo]")){ ANO = false; PER = null; PEDLIM = 100; render(); return; }
   const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
+  if(e.target.closest("[data-lucrotg]")){ const v = !LUCRO(); S.db.doc("config/geral").set({...S.config, mostrarLucro: v}).then(() => { S.config.mostrarLucro = v; render(); toast(v ? "Lucro e margens visíveis" : "Lucro e margens escondidos"); }, () => toast("Não foi possível salvar")); return; }
   if(e.target.closest("[data-catrec]")){ carregaCatalogo(true); return; }
   if(e.target.closest("[data-catesc]")){ openEscolherColecoes(); return; }
   const clj = e.target.closest("[data-colloja]"); if(clj){ openColecaoLoja(clj.dataset.colloja); return; }
