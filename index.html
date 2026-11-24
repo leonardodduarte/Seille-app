@@ -1051,7 +1051,7 @@ async function carregaCatalogo(forcar){
   if(CATCARR) return;
   if(CAT && !forcar && Date.now() - new Date(CAT.buscadoEm).getTime() < 6 * 3600e3) return;
   CATCARR = true; CATERR = ""; if(forcar) render();
-  try{ const r = await window.seilleFuncao("nuvemshop", "catalogo"); if(r && r.categorias){ CAT = r; try{ localStorage.setItem("seilleCatalogo", JSON.stringify(CAT)); }catch(_){} } }
+  try{ const r = await window.seilleFuncao("nuvemshop", "catalogo"); if(r && r.categorias){ CAT = r; try{ localStorage.setItem("seilleCatalogo", JSON.stringify(CAT)); }catch(_){} } else CATERR = "Não foi possível ler as coleções da loja agora."; }
   catch(e){ console.error(e); CATERR = "Não foi possível ler as coleções da loja agora. Tente de novo em instantes."; }
   CATCARR = false; render();
 }
@@ -1676,7 +1676,7 @@ function vPedidos(){
   nAba.carr = CARR.lista ? carrNoRecorte().length : "";
   const seg = [["emb","Por embalar"],["env","Por enviar"],["todos","Todos"],["carr","Carrinhos"]].map(([k,l]) => `<button class="${PEDF===k?"on":""}" data-pedf="${k}">${l}<span>${nAba[k].toLocaleString("pt-BR")}</span></button>`).join("");
   if(PEDF === "carr") return `<div class="seg full">${seg}</div>${vCarrinhos()}`;
-  return `${S.produtos.length?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
+  return `${S.produtos.length || LIMITADO()?"":`<div class="banner warn">Cadastre as peças em Peças para o app saber o custo de cada uma. Os pedidos da loja são ligados à peça pelo nome.</div>`}
   <div class="seg full">${seg}</div>
   ${PEDUF || PEDCUP ? `<div class="banner info" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span>Filtrando: ${[PEDUF ? "estado <b>" + esc(PEDUF) + "</b>" : "", PEDCUP ? (PEDCUP === "__sem" ? "<b>sem cupom</b>" : PEDCUP === "__com" ? "<b>com cupom</b>" : "cupom <b>" + esc(PEDCUP) + "</b>") : ""].filter(Boolean).join(" · ")}</span><button class="btn" data-limpaf>Limpar filtro</button></div>` : ""}
   <div class="filtros">
