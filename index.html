@@ -1419,7 +1419,8 @@ function vPainel(){
       </tbody></table></div>
       <div class="zaprow">${ranking.length > topArr.length ? `<button class="btn" data-todaspecas>Ver todas as ${ranking.length} peças</button>` : ""}${zapBtn("pecas", true)}</div>`)}
     ${painelClientes(c)}
-  </div>`;
+  </div>
+  ${LIMITADO() ? `<div class="panel" style="display:flex;flex-direction:column;gap:6px"><h3>Notificações de vendas</h3><div id="notif"></div></div>` : ""}`;
 }
 function bindChart(){
   const box = $("#chart"); if(!box) return;
@@ -3340,7 +3341,7 @@ function render(){
   const sub = aba === "custos" ? `<nav class="subtabs" aria-label="Custos">${GRUPO_CUSTOS.map(([k,l]) => `<a href="#${k}"${k===v?' aria-current="page"':""}>${l}</a>`).join("")}</nav>` : "";
   const pre = (S.failed ? `<div class="banner warn">${esc(S.failed)}</div>` : "") + sub + (v === "painel" ? saudacao() : "") + (PERIOD_VIEWS.includes(v) ? periodBar() : "");
   $("#main").innerHTML = `<section class="view">${pre}${RENDER[v]()}</section>`;
-  if(v === "painel") bindChart();
+  if(v === "painel"){ bindChart(); if(LIMITADO()) montaNotif(); }
   const mOn = $("#main .mgrid .on"); if(mOn){ const g = mOn.parentElement; if(g.scrollWidth > g.clientWidth) g.scrollLeft = mOn.offsetLeft - g.clientWidth/2 + mOn.clientWidth/2; }
 
   if(v === "ajustes") bindAjustes();

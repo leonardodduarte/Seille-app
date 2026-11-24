@@ -74,7 +74,7 @@ async function primeiraVez(chave: string): Promise<boolean> {
   if (error) { console.error("primeiraVez", error); return true; }
   return (data ?? []).length > 0;
 }
-type Assinatura = { endpoint: string; keys: { p256dh: string; auth: string }; criadoEm?: string; aparelho?: string };
+type Assinatura = { endpoint: string; keys: { p256dh: string; auth: string }; criadoEm?: string; aparelho?: string; email?: string };
 type Push = { publica?: string; privada?: string; assinaturas?: Assinatura[] };
 async function lerPush(): Promise<Push> {
   const { data } = await admin.from("integracoes").select("dados").eq("nome", "push").maybeSingle();
@@ -92,9 +92,12 @@ async function chavesPush(): Promise<Push> {
   await salvarPush(novo);
   return novo;
 }
-async function avisar(title: string, body: string, url = "./", tag = "") {
+async function avisar(title: string, body: string, url = "./", tag = "", so?: (s: Assinatura) => boolean) {
   const p = await lerPush();
-  const subs = p.assinaturas ?? [];
+  // só celulares de quem ainda tem acesso ao app (os antigos, sem e-mail, continuam recebendo)
+  const { data: ms } = await admin.from("membros").select("email");
+  const ativos = new Set((ms ?? []).map((m: any) => String(m.email).toLowerCase()));
+  const subs = (p.assinaturas ?? []).filter((s) => (!s.email || ativos.has(s.email.toLowerCase())) && (!so || so(s)));
   if (!subs.length || !p.publica || !p.privada) return { enviadas: 0, celulares: 0 };
   webpush.setVapidDetails("mailto:app@seille.com.br", p.publica, p.privada);
   const payload = JSON.stringify({ title, body, url, tag });
@@ -491,6 +494,9 @@ Deno.serve(async (req) => {
     if (!email || email === QUEM.email.toLowerCase()) return json({ code: "invalid_argument", message: "Você não pode remover o seu próprio acesso." }, 400);
     const { error } = await admin.from("membros").delete().ilike("email", email);
     if (error) return json({ code: "falha", message: error.message }, 500);
+    // para de mandar notificações para os celulares dessa pessoa
+    const pu = await lerPush();
+    await salvarPush({ ...pu, assinaturas: (pu.assinaturas ?? []).filter((s) => (s.email ?? "").toLowerCase() !== email) });
     return json({ ok: true });
   }
   if (b.acao === "status") {
@@ -529,7 +535,7 @@ Deno.serve(async (req) => {
     // um aparelho = uma assinatura: ao ativar de novo, a anterior do mesmo aparelho sai (evita notificação repetida)
     const aparelho = typeof b.aparelho === "string" ? b.aparelho.slice(0, 64) : "";
     const lista = (p.assinaturas ?? []).filter((s) => s.endpoint !== a.endpoint && !(aparelho && s.aparelho === aparelho));
-    lista.push({ endpoint: a.endpoint, keys: { p256dh: String(a.keys.p256dh), auth: String(a.keys.auth) }, criadoEm: new Date().toISOString(), ...(aparelho ? { aparelho } : {}) });
+    lista.push({ endpoint: a.endpoint, keys: { p256dh: String(a.keys.p256dh), auth: String(a.keys.auth) }, criadoEm: new Date().toISOString(), email: QUEM.email, ...(aparelho ? { aparelho } : {}) });
     await salvarPush({ ...p, assinaturas: lista });
     return json({ ok: true, celulares: lista.length });
   }
@@ -539,7 +545,10 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
   if (b.acao === "push-teste") {
-    const r = await avisar("Notificações ligadas", "Você vai receber um aviso aqui a cada venda nova da loja.", "./#painel", "teste");
+    // o teste vai só para os celulares de quem pediu (os antigos, sem e-mail, contam como de quem tem acesso completo)
+    const eu = QUEM.email.toLowerCase();
+    const r = await avisar("Notificações ligadas", "Você vai receber um aviso aqui a cada venda nova da loja.", "./#painel", "teste",
+      (s) => s.email ? s.email.toLowerCase() === eu : QUEM.perfil === "completo");
     return json(r);
   }
   // Abre um pedido recente no cartão e mostra onde (e se) a Nuvemshop informa taxas e juros
