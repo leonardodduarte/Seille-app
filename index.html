@@ -27,7 +27,10 @@ input,select,textarea{font-size:16px!important}
 .carrtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .carrprods{display:flex;flex-direction:column;gap:8px}
 table.grade td,table.grade th{padding-left:6px;padding-right:6px}
-table.grade td:nth-child(2){min-width:140px}
+table.grade td:nth-child(2){min-width:150px}
+.gnome{display:flex;align-items:center;gap:10px}
+.gfoto{width:40px;height:40px;border-radius:8px;object-fit:cover;flex:none;background:var(--sunken)}
+.gfoto.vazia{display:inline-block}
 </style>
 <script src="config.js?v=2"></script>
 <script src="vendor/supabase.js"></script>
@@ -1450,7 +1453,7 @@ const ORD_TAM = ["PP","P","M","G","GG","XG","EG","XGG"];
 function gradeTamanhos(gs){
   const m = {}, tams = new Set();
   gs.forEach(g => g.ls.forEach(v => { const nome = modeloDe(v).nome; let t = String(tamanhoDe(v) || "").trim().toUpperCase(); if(!t || /^(U|UN|UNICO|ÚNICO|TAMANHO ÚNICO|TAMANHO UNICO)$/.test(t)) t = "Único";
-    tams.add(t); const o = (m[nome] ||= {nome, tot: 0, t: {}}); o.t[t] = (o.t[t] || 0) + num(v.qtd); o.tot += num(v.qtd); }));
+    tams.add(t); const o = (m[nome] ||= {nome, tot: 0, t: {}, img: ""}); if(!o.img && /^https:\/\//.test(v.imagem||"")) o.img = v.imagem; o.t[t] = (o.t[t] || 0) + num(v.qtd); o.tot += num(v.qtd); }));
   const peso = t => t === "Único" ? 999 : ORD_TAM.includes(t) ? ORD_TAM.indexOf(t) : /^\d+$/.test(t) ? 100 + +t : 500;
   const cols = [...tams].sort((a,b) => peso(a) - peso(b) || a.localeCompare(b));
   const linhas = Object.values(m).sort((a,b) => b.tot - a.tot || a.nome.localeCompare(b.nome));
@@ -1460,7 +1463,7 @@ function gradeTamanhos(gs){
 function tabelaGrade(gs){
   const d = gradeTamanhos(gs); if(!d.linhas.length) return "";
   return `<div class="tw"><table class="grade"><thead><tr><th class="n">Nº</th><th>Peça</th>${d.cols.map(c => `<th class="n">${esc(c)}</th>`).join("")}<th class="n">Total</th></tr></thead>
-    <tbody>${d.linhas.map((l,i) => `<tr><td class="n sub">${i+1}</td><td>${esc(l.nome)}</td>${d.cols.map(c => `<td class="n">${l.t[c] || `<span class="sub">–</span>`}</td>`).join("")}<td class="n"><b>${l.tot}</b></td></tr>`).join("")}</tbody>
+    <tbody>${d.linhas.map((l,i) => `<tr><td class="n sub">${i+1}</td><td><div class="gnome">${l.img ? fotoTag(l.img, "gfoto") : `<span class="gfoto vazia"></span>`}<span>${esc(l.nome)}</span></div></td>${d.cols.map(c => `<td class="n">${l.t[c] || `<span class="sub">–</span>`}</td>`).join("")}<td class="n"><b>${l.tot}</b></td></tr>`).join("")}</tbody>
     <tfoot><tr><td></td><td>Total</td>${d.cols.map(c => `<td class="n">${d.porCol[c]}</td>`).join("")}<td class="n">${d.total}</td></tr></tfoot></table></div>`;
 }
 function textoPendentes(gs){
@@ -1507,20 +1510,22 @@ async function pdfPendentes(gs){
   doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(0); doc.text("SEILLE · " + titulo.toUpperCase(), M, y + 7);
   doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(110); doc.text(`${gs.length} pedidos · gerado em ${dBR(today())}`, M, y + 14); y += 24;
   // peças por tamanho (modelo × tamanho)
-  const gd = gradeTamanhos(gs);
+  const gd = gradeTamanhos(gs), RH = 17;
   doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(0); doc.text("Peças por tamanho", M, y); y += 4;
-  const cw = Math.min(16, (W - 2*M - 12 - 70 - 18) / Math.max(1, gd.cols.length)), xNome = M + 10, xTot = W - M, xCol = i => xTot - 18 - (gd.cols.length - 1 - i) * cw;
+  const cw = Math.min(16, (W - 2*M - 12 - 70 - 18) / Math.max(1, gd.cols.length)), xFoto = M + 9, xNome = M + 9 + RH - 1, xTot = W - M, xCol = i => xTot - 18 - (gd.cols.length - 1 - i) * cw;
   const cabG = () => { doc.setFillColor(0,0,0); doc.rect(M, y, W - 2*M, 8, "F"); doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255);
     doc.text("Nº", M + 2, y + 5.5); doc.text("PEÇA", xNome, y + 5.5); gd.cols.forEach((c,i) => doc.text(c.toUpperCase(), xCol(i), y + 5.5, {align:"right"})); doc.text("TOTAL", xTot - 2, y + 5.5, {align:"right"}); y += 8; };
   cabG();
-  gd.linhas.forEach((l, i) => { if(y + 8 > H - 14){ novaPagina(); cabG(); }
-    if(i % 2) { doc.setFillColor(245,245,245); doc.rect(M, y, W - 2*M, 8, "F"); }
-    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(120); doc.text(String(i + 1), M + 2, y + 5.5);
-    doc.setTextColor(0); doc.text(doc.splitTextToSize(l.nome, xCol(0) - cw - xNome)[0], xNome, y + 5.5);
-    gd.cols.forEach((c,ci) => { const v = l.t[c]; doc.setTextColor(v ? 0 : 170); doc.setFont("helvetica", v ? "bold" : "normal"); doc.text(v ? String(v) : "–", xCol(ci), y + 5.5, {align:"right"}); });
-    doc.setFont("helvetica","bold"); doc.setTextColor(0); doc.text(String(l.tot), xTot - 2, y + 5.5, {align:"right"}); y += 8; });
+  gd.linhas.forEach((l, i) => { if(y + RH > H - 14){ novaPagina(); cabG(); }
+    if(i % 2) { doc.setFillColor(245,245,245); doc.rect(M, y, W - 2*M, RH, "F"); }
+    const yt = y + RH/2 + 1.5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(120); doc.text(String(i + 1), M + 2, yt);
+    foto(l.img, xFoto, y + 1, RH - 2);
+    doc.setTextColor(0); doc.text(doc.splitTextToSize(l.nome, xCol(0) - cw - xNome)[0], xNome + 2, yt);
+    gd.cols.forEach((c,ci) => { const v = l.t[c]; doc.setTextColor(v ? 0 : 170); doc.setFont("helvetica", v ? "bold" : "normal"); doc.setFontSize(v ? 11 : 10); doc.text(v ? String(v) : "–", xCol(ci), yt, {align:"right"}); });
+    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(0); doc.text(String(l.tot), xTot - 2, yt, {align:"right"}); y += RH; });
   if(y + 9 > H - 14) novaPagina();
-  doc.setDrawColor(0); doc.line(M, y, W - M, y); doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(0); doc.text("Total", xNome, y + 6);
+  doc.setDrawColor(0); doc.line(M, y, W - M, y); doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(0); doc.text("Total", xNome + 2, y + 6);
   gd.cols.forEach((c,ci) => doc.text(String(gd.porCol[c]), xCol(ci), y + 6, {align:"right"})); doc.text(String(gd.total), xTot - 2, y + 6, {align:"right"}); y += 10;
   y += 6;
   // pedidos
