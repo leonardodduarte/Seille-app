@@ -2588,7 +2588,7 @@ function painelAcessos(){
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px">
     <h3>Acesso ao app</h3>
     <p class="sub" style="margin:0">Quem pode entrar no app. "Só Painel e Pedidos" vê o resultado e os pedidos, mas não vê custos, funcionárias, documentos, contador nem ajustes.</p>
-    ${ACESSOS_ERR ? `<div class="banner warn">${esc(ACESSOS_ERR)}</div>` : !ACESSOS ? `<p class="sub">Carregando…</p>` : `<div class="tw"><table><tbody>${lista.map(m => `<tr><td>${esc(m.email)}${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? ` <span class="sub">(você)</span>` : ""}<div class="sub">${ROT_PERFIL[m.perfil] || esc(m.perfil)}</div></td><td class="n">${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? "" : `<button class="lnk" data-acperfil="${esc(m.email)}" data-p="${m.perfil === "pedidos" ? "completo" : "pedidos"}">${m.perfil === "pedidos" ? "Dar acesso completo" : "Limitar a Painel e Pedidos"}</button> · <button class="lnk" data-acrem="${esc(m.email)}">Remover</button>`}</td></tr>`).join("")}</tbody></table></div>`}
+    ${ACESSOS_ERR ? `<div class="banner warn">${esc(ACESSOS_ERR)}</div>` : !ACESSOS ? `<p class="sub">Carregando…</p>` : `<div class="tw"><table><tbody>${lista.map(m => `<tr><td>${esc(m.email)}${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? ` <span class="sub">(você)</span>` : ""}<div class="sub">${ROT_PERFIL[m.perfil] || esc(m.perfil)}</div></td><td class="n" style="white-space:normal">${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? "" : `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><button class="lnk" data-acperfil="${esc(m.email)}" data-p="${m.perfil === "pedidos" ? "completo" : "pedidos"}">${m.perfil === "pedidos" ? "Dar acesso completo" : "Limitar a Painel e Pedidos"}</button><button class="lnk" data-acrem="${esc(m.email)}">Remover acesso</button></div>`}</td></tr>`).join("")}</tbody></table></div>`}
     <form id="acform" style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px">
       <b>Dar acesso a outra pessoa</b>
       <div class="fgrid">
@@ -2602,7 +2602,7 @@ function painelAcessos(){
 }
 async function acaoAcesso(acao, extra, ok){
   try{ await window.seilleFuncao("nuvemshop", acao, extra); toast(ok); ACESSOS = null; carregaAcessos(); }
-  catch(e){ toast(e?.message && e.code === "invalid_argument" ? e.message : e?.code === "sem_perfil" ? "Falta aplicar as regras de acesso no banco (aguarde a publicação e tente de novo)." : "Não foi possível salvar agora"); }
+  catch(e){ toast(e?.message && e.code === "invalid_argument" ? e.message : e?.code === "sem_perfil" ? "Falta rodar as regras de acesso no Supabase (SQL Editor). Depois toque em Dar acesso de novo." : "Não foi possível salvar agora"); }
 }
 function vAjustes(){
   const k = S.config;
