@@ -372,15 +372,19 @@ async function assinaturaValida(corpo: string, recebida: string) {
 }
 
 // ---------- membros do app ----------
+let QUEM = { email: "", perfil: "completo" }; // quem fez a chamada atual
 async function membro(req: Request): Promise<string> {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return "sem_login";
   const { data: { user }, error } = await admin.auth.getUser(jwt);
   if (!user?.email) { console.error("getUser", error); return "login_invalido"; }
-  const { data, error: e2 } = await admin.from("membros").select("email").ilike("email", user.email).maybeSingle();
+  const { data, error: e2 } = await admin.from("membros").select("*").ilike("email", user.email).maybeSingle();
   if (e2) { console.error("membros", e2); return "erro_membros"; }
-  return data ? "" : "nao_membro";
+  if (!data) return "nao_membro";
+  QUEM = { email: String(data.email), perfil: (data as any).perfil || "completo" };
+  return "";
 }
+const PERFIS = ["completo", "pedidos"];
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -449,6 +453,46 @@ Deno.serve(async (req) => {
   const d = await ler();
   const configurado = !!(CLIENT_ID && CLIENT_SECRET);
 
+  // ---------- quem tem acesso ao app (só quem tem acesso completo mexe aqui) ----------
+  const SO_COMPLETO = ["acessos", "acesso-dar", "acesso-remover", "conectar", "desconectar"];
+  if (SO_COMPLETO.includes(b.acao) && QUEM.perfil !== "completo") return json({ code: "not_granted", motivo: "so_completo" }, 403);
+  if (b.acao === "acessos") {
+    const { data, error } = await admin.from("membros").select("*").order("email");
+    if (error) return json({ code: "falha", message: error.message }, 500);
+    return json({ voce: QUEM.email, perfilAtivo: (data ?? []).some((m: any) => "perfil" in m), lista: (data ?? []).map((m: any) => ({ email: m.email, perfil: m.perfil || "completo" })) });
+  }
+  if (b.acao === "acesso-dar") {
+    const email = String(b.email ?? "").trim().toLowerCase(), senha = String(b.senha ?? ""), perfil = PERFIS.includes(b.perfil) ? b.perfil : "pedidos";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ code: "invalid_argument", message: "E-mail inválido." }, 400);
+    if (email === QUEM.email.toLowerCase() && perfil !== "completo") return json({ code: "invalid_argument", message: "Você não pode limitar o seu próprio acesso." }, 400);
+    // conta de login: cria; se já existe, troca a senha (quando informada)
+    let existe: any = null;
+    for (let pg = 1; pg <= 20 && !existe; pg++) {
+      const { data: l, error } = await admin.auth.admin.listUsers({ page: pg, perPage: 200 });
+      if (error) return json({ code: "falha", message: error.message }, 500);
+      existe = l.users.find((u) => (u.email ?? "").toLowerCase() === email);
+      if (l.users.length < 200) break;
+    }
+    if (!existe) {
+      if (senha.length < 8) return json({ code: "invalid_argument", message: "A senha precisa ter pelo menos 8 caracteres." }, 400);
+      const { error } = await admin.auth.admin.createUser({ email, password: senha, email_confirm: true });
+      if (error) return json({ code: "falha", message: error.message }, 500);
+    } else if (senha) {
+      if (senha.length < 8) return json({ code: "invalid_argument", message: "A senha precisa ter pelo menos 8 caracteres." }, 400);
+      const { error } = await admin.auth.admin.updateUserById(existe.id, { password: senha });
+      if (error) return json({ code: "falha", message: error.message }, 500);
+    }
+    const { error } = await admin.from("membros").upsert({ email, perfil }, { onConflict: "email" });
+    if (error) return json({ code: "sem_perfil", message: error.message }, 500);
+    return json({ ok: true, nova: !existe });
+  }
+  if (b.acao === "acesso-remover") {
+    const email = String(b.email ?? "").trim().toLowerCase();
+    if (!email || email === QUEM.email.toLowerCase()) return json({ code: "invalid_argument", message: "Você não pode remover o seu próprio acesso." }, 400);
+    const { error } = await admin.from("membros").delete().ilike("email", email);
+    if (error) return json({ code: "falha", message: error.message }, 500);
+    return json({ ok: true });
+  }
   if (b.acao === "status") {
     return json({ configurado, conectado: !!d.access_token, loja: d.store_id ?? null, conectadoEm: d.conectado_em ?? null, ultimaSync: d.ultima_sync ?? null, ultimoErro: d.ultimo_erro ?? null, ultimaBusca: d.ultima_busca ?? null });
   }

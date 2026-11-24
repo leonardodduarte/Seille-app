@@ -8,6 +8,7 @@ on:
     paths:
       - "supabase/functions/**"
       - "supabase/config.toml"
+      - "supabase/acessos.sql"
       - ".github/workflows/publicar-funcoes.yml"
   workflow_dispatch:
 
@@ -45,3 +46,12 @@ jobs:
 
       - name: Publicar ler-comprovante
         run: supabase functions deploy ler-comprovante --project-ref "$PROJECT_REF" --no-verify-jwt --yes
+
+      # Regras de acesso do banco (perfis completo / só pedidos). Seguro rodar de novo.
+      - name: Aplicar regras de acesso
+        run: |
+          jq -Rs '{query: .}' supabase/acessos.sql > /tmp/q.json
+          code=$(curl -sS -o /tmp/r.txt -w "%{http_code}" -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json)
+          echo "HTTP $code"; head -c 400 /tmp/r.txt; echo
+          test "$code" -lt 300

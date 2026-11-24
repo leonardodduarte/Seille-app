@@ -4,7 +4,7 @@
   const CFG = window.SEILLE_CONFIG || {};
   const configurado = CFG.supabaseUrl && CFG.supabaseAnonKey && !/COLE_AQUI/.test(CFG.supabaseUrl + CFG.supabaseAnonKey);
   const sb = configurado ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey) : null;
-  window.seilleAuth = { email: "", sair: async () => { if (sb) await sb.auth.signOut(); location.reload(); } };
+  window.seilleAuth = { email: "", perfil: "completo", sair: async () => { if (sb) await sb.auth.signOut(); location.reload(); } };
 
   let pronto; const prontoP = new Promise(r => { pronto = r; });
   const store = {};          // col -> Map(id -> data)
@@ -169,6 +169,9 @@
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { telaLogin(); return; }
     window.seilleAuth.email = session.user.email;
+    // perfil de acesso: "completo" (padrão) ou "pedidos" (só Painel e Pedidos)
+    try { const { data: m } = await sb.from("membros").select("*").ilike("email", session.user.email).maybeSingle(); window.seilleAuth.perfil = m?.perfil || "completo"; }
+    catch (_) { window.seilleAuth.perfil = "completo"; }
     try { await carregar(); }
     catch (e) { console.error(e); telaLogin("Sua conta não tem acesso aos dados da Seille. Peça para incluir seu e-mail na lista de membros."); await sb.auth.signOut(); }
   })();

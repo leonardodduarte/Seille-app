@@ -392,6 +392,7 @@ button.prev{border:1px solid var(--line);padding:0;cursor:zoom-in;position:relat
 <div class="sheet" id="sheet" hidden><div class="in"><div class="grab"></div>
   <a href="#pecas">Peças e ficha técnica</a>
   <a href="#ajustes">Ajustes</a>
+  <a href="#" data-sair hidden>Sair da conta</a>
 </div></div>
 
 <script>
@@ -841,7 +842,9 @@ document.addEventListener("keydown", e => { if(e.key === "Escape"){ closeModal()
 
 // ---------- views ----------
 const VIEWS = ["contador","contas","painel","leitor","pedidos","pecas","custos","funcionarias","colecoes","trafego","impostos","ajustes"];
-const curView = () => { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "painel"; };
+// perfil "pedidos": quem só vê o Painel e os Pedidos
+const LIMITADO = () => window.seilleAuth?.perfil === "pedidos";
+const curView = () => { const h = location.hash.slice(1); if(LIMITADO() && !["painel","pedidos"].includes(h)) return "painel"; return VIEWS.includes(h) ? h : "painel"; };
 const docLinks = arr => (arr||[]).map(a=>`<a class="doclink" href="#" data-blob="${esc(a.id)}">${esc(a.nome||"comprovante")}</a>`).join("");
 const exBadge = d => d.exemplo ? `<span class="tag">exemplo</span>` : "";
 const statusPill = s => `<span class="pill ${STATUS_CLS[s]||""}">${esc(s||"Recebido")}</span>`;
@@ -1095,7 +1098,7 @@ function painelColecoesLoja(c){
       ${d.lista.length ? `<div class="ufs">${d.lista.map(linha).join("")}</div>
         <p class="sub" style="margin:0">Peças fora dessas coleções: ${brl(d.sem.receita)} (${pct(d.total ? d.sem.receita / d.total : 0, 0)}) · ${intf(d.sem.pecas)} peças. Uma peça que está em duas coleções conta nas duas.</p>`
         : `<div class="empty"><b>Escolha as coleções</b>Toque em "Escolher coleções" e marque as categorias do site que são coleções (ex.: Mar Alto).</div>`}
-      <div class="zaprow" style="margin:0"><button class="btn" data-catesc>Escolher coleções</button><button class="btn" data-catrec${CATCARR ? " disabled" : ""}>${CATCARR ? "Atualizando…" : "Atualizar da loja"}</button></div>
+      <div class="zaprow" style="margin:0"${LIMITADO() ? " hidden" : ""}><button class="btn" data-catesc>Escolher coleções</button><button class="btn" data-catrec${CATCARR ? " disabled" : ""}>${CATCARR ? "Atualizando…" : "Atualizar da loja"}</button></div>
     </div>`;
   }
   const n = CAT ? colecoesEscolhidas().length : 0;
@@ -1377,7 +1380,7 @@ function vPainel(){
   <details class="maisind"${maisInd ? " open" : ""}><summary data-maisind>${maisInd ? "Menos indicadores ▴" : "Ver mais indicadores ▾"}</summary>
   <div class="kpis kpis4">
     ${LUCRO() ? `<div class="kpi kclick" data-ir="custos"><span class="l">Lucro líquido ›</span><span class="v num ${c.lucro>=0?"pos":"negv"}">${brl(c.lucro)}</span><span class="s">Margem líquida ${pct(c.margem)}</span>${cmp.temAnt ? `<span class="s cmp">${cmp.varia(ca.lucro, cp.lucro)} vs. ${brl(cp.lucro)} em ${cmp.rot}</span>` : ""}</div>` : ""}
-    <div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>
+    ${LIMITADO() ? "" : `<div class="kpi kclick" data-ir="trafego"><span class="l">Tráfego pago ›</span><span class="v num">${brl(c.ads + (c.gestao||0))}</span>${c.gestao ? `<span class="s">anúncios ${brl(c.ads)} + gestão ${brl(c.gestao)}</span>` : ""}<span class="s">ROAS${c.roasGeral && isFinite(c.roas) ? " geral" : ""} ${isFinite(c.roas)?c.roas.toLocaleString("pt-BR",{maximumFractionDigits:2})+"×":"—"} · CAC ${isFinite(c.cac)?brl(c.cac):"—"}</span></div>`}
     ${LUCRO() ? `<div class="kpi kclick" data-ir="taxfrete"><span class="l">Margem de contribuição ›</span><span class="v num">${pct(c.mcPct)}</span><span class="s">${brl(c.mc)} depois de peças, taxas e frete</span></div>` : ""}
     ${LUCRO() ? `<div class="kpi kclick" data-ir="custos"><span class="l">Ponto de equilíbrio ›</span><span class="v num">${isFinite(c.equilibrio)?brl(c.equilibrio):"—"}</span><span class="s">${isFinite(c.equilibrio)?(c.receita>=c.equilibrio?(P?"Atingido no período":A?"Atingido no ano":"Atingido neste mês"):"Faltam "+brl(c.equilibrio-c.receita)):"Lance vendas para calcular"}</span></div>` : ""}
     ${cardClientesNovos(c, cmp)}
@@ -2411,7 +2414,7 @@ async function csvContador(){
 // uma vez: busca de novo todas as vendas para trazer o detalhe dos descontos e os cancelados depois de pagos
 let sincDetalhe = false;
 async function sincronizarDetalhe(){
-  if(sincDetalhe || !window.seilleNuvem || (S.config.detalheDescontos && S.config.fotosPedidos && S.config.envioPedidos && S.config.horaPedidos)) return;
+  if(sincDetalhe || !window.seilleNuvem || LIMITADO() || (S.config.detalheDescontos && S.config.fotosPedidos && S.config.envioPedidos && S.config.horaPedidos)) return;
   const desde = S.vendas.filter(v => v.nuvemshopId).map(v => v.data).filter(Boolean).sort()[0]; if(!desde) return;
   sincDetalhe = true; render();
   try{ await window.seilleNuvem.chamar("sincronizar", {desde}); await S.db.doc("config/geral").set({...S.config, detalheDescontos: S.config.detalheDescontos || today(), fotosPedidos: S.config.fotosPedidos || today(), envioPedidos: S.config.envioPedidos || today(), horaPedidos: today()}); toast("Pedidos atualizados com os horários"); }
@@ -2570,10 +2573,42 @@ function painelNuvem(){
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-diagtaxas>Verificar</button><button class="btn pri" data-buscataxas ${buscandoTaxas ? "disabled" : ""}>${buscandoTaxas ? `<span class="spin"></span>Buscando…` : "Buscar taxas e juros de todos os pedidos"}</button></div></div>`;
   return `<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>Loja Nuvemshop</h3>${corpo}</div>`;
 }
+// ---------- quem tem acesso ao app ----------
+let ACESSOS = null, ACESSOS_CARR = false, ACESSOS_ERR = "";
+async function carregaAcessos(){
+  if(ACESSOS_CARR) return; ACESSOS_CARR = true;
+  try{ ACESSOS = await window.seilleFuncao("nuvemshop", "acessos"); ACESSOS_ERR = ""; }
+  catch(e){ ACESSOS_ERR = "Não foi possível ver a lista de acessos agora."; }
+  ACESSOS_CARR = false; if(curView() === "ajustes") render();
+}
+const ROT_PERFIL = {completo: "Acesso completo", pedidos: "Só Painel e Pedidos"};
+function painelAcessos(){
+  if(!ACESSOS && !ACESSOS_CARR && !ACESSOS_ERR) setTimeout(carregaAcessos, 0);
+  const lista = ACESSOS?.lista || [];
+  return `<div class="panel" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Acesso ao app</h3>
+    <p class="sub" style="margin:0">Quem pode entrar no app. "Só Painel e Pedidos" vê o resultado e os pedidos, mas não vê custos, funcionárias, documentos, contador nem ajustes.</p>
+    ${ACESSOS_ERR ? `<div class="banner warn">${esc(ACESSOS_ERR)}</div>` : !ACESSOS ? `<p class="sub">Carregando…</p>` : `<div class="tw"><table><tbody>${lista.map(m => `<tr><td>${esc(m.email)}${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? ` <span class="sub">(você)</span>` : ""}<div class="sub">${ROT_PERFIL[m.perfil] || esc(m.perfil)}</div></td><td class="n">${m.email.toLowerCase() === String(ACESSOS.voce||"").toLowerCase() ? "" : `<button class="lnk" data-acperfil="${esc(m.email)}" data-p="${m.perfil === "pedidos" ? "completo" : "pedidos"}">${m.perfil === "pedidos" ? "Dar acesso completo" : "Limitar a Painel e Pedidos"}</button> · <button class="lnk" data-acrem="${esc(m.email)}">Remover</button>`}</td></tr>`).join("")}</tbody></table></div>`}
+    <form id="acform" style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px">
+      <b>Dar acesso a outra pessoa</b>
+      <div class="fgrid">
+        <div class="f"><label for="ac_em">E-mail da pessoa</label><input id="ac_em" type="email" required autocomplete="off"></div>
+        <div class="f"><label for="ac_se">Senha para ela entrar</label><input id="ac_se" type="text" minlength="8" autocomplete="off" placeholder="mínimo 8 caracteres"><span class="h">Você passa essa senha para a pessoa. Se ela já tiver conta, deixe em branco para manter a senha dela.</span></div>
+        <div class="f"><label for="ac_pf">O que ela vê</label><select id="ac_pf"><option value="pedidos">Só Painel e Pedidos</option><option value="completo">Tudo (acesso completo)</option></select></div>
+      </div>
+      <div><button class="btn pri" type="submit">Dar acesso</button></div>
+    </form>
+  </div>`;
+}
+async function acaoAcesso(acao, extra, ok){
+  try{ await window.seilleFuncao("nuvemshop", acao, extra); toast(ok); ACESSOS = null; carregaAcessos(); }
+  catch(e){ toast(e?.message && e.code === "invalid_argument" ? e.message : e?.code === "sem_perfil" ? "Falta aplicar as regras de acesso no banco (aguarde a publicação e tente de novo)." : "Não foi possível salvar agora"); }
+}
 function vAjustes(){
   const k = S.config;
   const f = (key,label,h,step="0.01") => `<div class="f"><label for="c_${key}">${label}</label><input id="c_${key}" name="${key}" type="number" step="${step}" min="0" value="${esc(k[key])}" inputmode="decimal"><span class="h">${h}</span></div>`;
   return `<div class="head"><div><h2>Ajustes</h2></div></div>
+  ${painelAcessos()}
   <div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Mostrar lucro, sobra e margens</b><div class="sub">Deixe desligado enquanto os custos fixos, variáveis e de mão de obra das peças não estiverem definidos.</div></div><button type="button" class="btn${LUCRO() ? " pri" : ""}" data-lucrotg>${LUCRO() ? "Ligado" : "Desligado"}</button></div>
   <div class="seclbl">Valores<span>usados nos cálculos</span></div>
   <form class="panel" id="cfg" style="display:flex;flex-direction:column;gap:14px">
@@ -3287,11 +3322,14 @@ function render(){
   document.querySelectorAll("#bnav a").forEach(a => { if(a.hash === "#"+aba) a.setAttribute("aria-current","page"); });
   $("#mais").toggleAttribute("aria-current", ["pecas","ajustes"].includes(v));
   $("#sheet").hidden = true;
+  { const lim = LIMITADO(); // esconde as abas que o perfil não usa
+    document.querySelectorAll("#bnav a, #tabs a, #sheet a[href^='#']:not([data-sair])").forEach(a => { a.hidden = lim && !["#painel","#pedidos"].includes(a.hash); });
+    const sa = document.querySelector("#sheet [data-sair]"); if(sa) sa.hidden = !lim; }
   $("#mes").value = MES;
   if(S.loaded.size < NLOAD && !S.failed){ return; }
-  if(!semeado && S.db && !S.failed){ semeado = true; semearGestao(); }
+  if(!semeado && S.db && !S.failed && !LIMITADO()){ semeado = true; semearGestao(); }
   // keep config form edits from being wiped while typing
-  if(v === "ajustes" && document.activeElement?.closest?.("#cfg")) return;
+  if(v === "ajustes" && document.activeElement?.closest?.("#cfg, #acform")) return;
   if(v === "leitor" && document.activeElement?.matches?.(".fitem input, .fitem select")) return;
   if(["nsdesde","perde","perate"].includes(document.activeElement?.id)) return;
   const sub = aba === "custos" ? `<nav class="subtabs" aria-label="Custos">${GRUPO_CUSTOS.map(([k,l]) => `<a href="#${k}"${k===v?' aria-current="page"':""}>${l}</a>`).join("")}</nav>` : "";
@@ -3304,6 +3342,11 @@ function render(){
 }
 
 // events
+document.addEventListener("submit", e => {
+  if(e.target.id !== "acform") return; e.preventDefault();
+  const f = e.target, email = f.querySelector("#ac_em").value.trim(), senha = f.querySelector("#ac_se").value, perfil = f.querySelector("#ac_pf").value;
+  acaoAcesso("acesso-dar", {email, senha, perfil}, `Acesso liberado para ${email}`);
+});
 document.addEventListener("click", e => {
   // Tocar de novo na aba em que já está: volta para o início da página
   const abaAtual = e.target.closest("#bnav a, #tabs a, #sheet a, a.logo");
@@ -3326,6 +3369,9 @@ document.addEventListener("click", e => {
     PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-modo]")){ ANO = false; PER = null; PEDLIM = 100; render(); return; }
   const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
+  const acp = e.target.closest("[data-acperfil]"); if(acp){ acaoAcesso("acesso-dar", {email: acp.dataset.acperfil, perfil: acp.dataset.p}, "Acesso atualizado"); return; }
+  const acr = e.target.closest("[data-acrem]"); if(acr){ if(confirm(`Remover o acesso de ${acr.dataset.acrem}? A pessoa não consegue mais entrar no app.`)) acaoAcesso("acesso-remover", {email: acr.dataset.acrem}, "Acesso removido"); return; }
+  if(e.target.closest("[data-sair]")){ e.preventDefault(); window.seilleAuth.sair(); return; }
   if(e.target.closest("[data-fxrapido]")){ openPreencherFixos(); return; }
   if(e.target.closest("[data-lucrotg]")){ const v = !LUCRO(); S.db.doc("config/geral").set({...S.config, mostrarLucro: v}).then(() => { S.config.mostrarLucro = v; render(); toast(v ? "Lucro e margens visíveis" : "Lucro e margens escondidos"); }, () => toast("Não foi possível salvar")); return; }
   if(e.target.closest("[data-catrec]")){ carregaCatalogo(true); return; }
@@ -3376,7 +3422,7 @@ document.addEventListener("click", e => {
   const rr = e.target.closest("[data-rapido]"); if(rr){ PEDF = rr.dataset.rapido; PEDQ = ""; PEDUF = ""; PEDCUP = ""; PEDLIM = 100; location.hash = "#pedidos"; return; }
   const cor = e.target.closest("[data-cliord]"); if(cor){ const noModal = !!cor.closest(".ov"); CLIORD = cor.dataset.cliord; render(); if(noModal) openTodosClientes(); return; }
   const rpe = e.target.closest("[data-rapidoper]"); if(rpe){ RAPIDO = rpe.dataset.rapidoper; render(); return; }
-  const ir = e.target.closest("[data-ir]"); if(ir){ irPara(ir.dataset.ir); return; }
+  const ir = e.target.closest("[data-ir]"); if(ir){ if(LIMITADO() && !["pedidos","pedidos-andamento"].includes(ir.dataset.ir)) return; irPara(ir.dataset.ir); return; }
   const pc = e.target.closest("[data-peca]"); if(pc){ abrirPeca(pc.dataset.peca); return; }
   const pu = e.target.closest("[data-pedidosuf]"); if(pu){ PEDUF = pu.dataset.pedidosuf; PEDQ = ""; PEDCUP = ""; PEDF = "todos"; PEDLIM = 100; location.hash = "#pedidos"; return; }
   if(e.target.closest("[data-gestao]")){ openForm("fixos", null, {nome: "Gestão de tráfego (agência)", categoria: CAT_GESTAO, valor: 2070, inicio: MES}); return; }
