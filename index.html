@@ -421,11 +421,11 @@ const STATUS = ["Recebido","Em produção","Pronto","Enviado","Entregue","Cancel
 const STATUS_CLS = {"Recebido":"", "Em produção":"acc", "Pronto":"warn", "Enviado":"good", "Entregue":"good", "Cancelado":"bad"};
 // Plano de contas: grupo → categorias. "Funcionárias" e "Tráfego pago" vêm das próprias abas.
 const GRUPOS = [
-  ["Estrutura do ateliê", ["Aluguel","Condomínio","IPTU","Energia elétrica","Água","Internet e telefone","Seguros"], "fixos"],
+  ["Estrutura do ateliê", ["Aluguel","Condomínio","IPTU","Energia elétrica","Água","Internet e telefone","Faxina","Manutenção do escritório","Seguros"], "fixos"],
   ["Pessoas", ["Funcionárias","Pró-labore"], "fixos"],
   ["Produção", ["Frete (transportadora)","Manutenção de máquinas","Peça piloto e modelagem","Tecido / estoque","Embalagens em lote","Material de limpeza e escritório"], "variaveis"],
   ["Administrativo", ["Contador","Plataforma do e-commerce","Softwares e apps","Taxas bancárias","Empréstimos e financiamentos"], "fixos"],
-  ["Marketing", ["Tráfego pago","Gestão de tráfego","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
+  ["Marketing", ["Tráfego pago","Gestão de tráfego","Marketing e divulgação","Lançamento de coleções","Fotos e conteúdo","Brindes e mimos"], "variaveis"],
   ["Outros", ["Outros"], "variaveis"],
 ];
 const CAT_GESTAO = "Gestão de tráfego"; // custo fixo da agência que faz a gestão dos anúncios
@@ -2041,6 +2041,48 @@ function vPecas(){
   <p class="sub">Markup = preço ÷ custo. Margem = (preço − custo − taxas) ÷ preço. Peças em amarelo estão abaixo da meta; a última coluna mostra o preço que atinge a meta.</p>`;
 }
 
+// ---------- preencher os custos fixos do mês numa tela só ----------
+const FIXOS_RAPIDOS = [["Aluguel","Aluguel"],["Condomínio","Condomínio"],["Energia elétrica","Luz"],["Água","Água"],["Internet e telefone","Internet e telefone"],["Faxina","Faxina"],["Material de limpeza e escritório","Produtos de limpeza e escritório"],["Contador","Contador"],["Taxas bancárias","Conta bancária (tarifas)"],["Manutenção do escritório","Manutenção do escritório"],["Marketing e divulgação","Marketing"],["Plataforma do e-commerce","Plataforma do site"],["Softwares e apps","Softwares e apps"],["IPTU","IPTU (parcela)"],["Seguros","Seguros"],["Pró-labore","Pró-labore"]];
+const ymMenos1 = ym => { let [y,m] = ym.split("-").map(Number); m--; if(!m){ m = 12; y--; } return y + "-" + String(m).padStart(2,"0"); };
+function openPreencherFixos(){
+  const atual = cat => S.fixos.filter(f => f.categoria === cat && fixoNoMes(f, MES));
+  closeModal();
+  modalEl = document.createElement("div"); modalEl.className = "ov";
+  modalEl.innerHTML = `<div class="modal">
+    <div><h2>Custos fixos mensais</h2><p class="sub" style="margin:4px 0 0">Preencha o valor de cada mês. Vale a partir de ${ymLabel(MES)} e se repete todo mês até você mudar. Deixe em branco o que a Seille não tem.</p></div>
+    <form id="fxr" style="display:flex;flex-direction:column;gap:0">
+      ${FIXOS_RAPIDOS.map(([cat, rot], i) => { const ex = atual(cat), v = ex.reduce((a,f) => a + num(f.valor), 0);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><label for="fxr${i}" style="flex:1">${esc(rot)}${ex.length > 1 ? `<div class="sub">${ex.length} lançamentos somados — edite na lista</div>` : ""}</label>
+          <input id="fxr${i}" name="${i}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="R$ 0,00" value="${v ? v : ""}"${ex.length > 1 ? " disabled" : ""} style="width:130px;text-align:right;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px"></div>`; }).join("")}
+    </form>
+    <p class="sub" style="margin:0">Custos que acontecem só uma vez (um conserto, uma compra) entram em "Custos variáveis do mês". Para outro custo fixo que não está aqui, use "Adicionar" na lista de custos fixos.</p>
+    <div class="mact"><button type="button" class="btn" id="fcancel">Cancelar</button><button type="button" class="btn pri" id="fok">Salvar</button></div>
+  </div>`;
+  document.body.appendChild(modalEl);
+  $("#fcancel", modalEl).onclick = closeModal;
+  $("#fok", modalEl).onclick = async () => {
+    const btn = $("#fok", modalEl); btn.disabled = true; let mud = 0;
+    try{
+      for(const [i, [cat, rot]] of FIXOS_RAPIDOS.entries()){
+        const inp = $("#fxr" + i, modalEl); if(inp.disabled) continue;
+        const novo = Math.round(num(inp.value) * 100) / 100, ex = atual(cat)[0], velho = ex ? num(ex.valor) : 0;
+        if(Math.abs(novo - velho) < 0.005) continue;
+        if(ex){
+          const body = {...ex}; delete body.id;
+          if((ex.inicio || "") >= MES){ // começou neste mês: só troca o valor (ou apaga se zerou)
+            if(novo) await S.db.collection("fixos").doc(ex.id).set({...body, valor: novo});
+            else await S.db.collection("fixos").doc(ex.id).delete();
+          } else { // vinha de antes: encerra no mês anterior e abre o novo valor a partir deste mês
+            await S.db.collection("fixos").doc(ex.id).set({...body, fim: ymMenos1(MES)});
+            if(novo) await S.db.collection("fixos").add({nome: ex.nome || rot, categoria: cat, valor: novo, inicio: MES, criadoEm: new Date().toISOString()});
+          }
+        } else await S.db.collection("fixos").add({nome: rot, categoria: cat, valor: novo, inicio: MES, criadoEm: new Date().toISOString()});
+        mud++;
+      }
+      closeModal(); toast(mud ? `Custos fixos salvos (${mud})` : "Nada mudou");
+    }catch(e){ console.error(e); btn.disabled = false; toast("Não foi possível salvar"); }
+  };
+}
 function vCustos(){
   const c = calcMes(MES), m = custosPorCategoria(MES, c);
   const known = new Set(GRUPOS.flatMap(g=>g[1]));
@@ -2057,7 +2099,7 @@ function vCustos(){
       return `<tr><td>${esc(k)}</td><td class="n">${v ? brl(v) : `<span class="sub">não lançado</span>`}</td><td class="n sub">${v && c.receita ? pct(v/c.receita) : ""}</td><td class="n">${act}</td></tr>`;
     }).join("");
   }).join("");
-  return `<div class="head"><div><h2>Custos de ${ymLabel(MES)}</h2><p>O mapa abaixo lista os custos de um negócio como a Seille. O que ainda não foi lançado aparece em cinza. O custo de cada peça vendida, as taxas e o frete entram pelos pedidos.</p></div><a class="btn pri" href="#leitor" style="text-decoration:none">Adicionar documentos</a></div>
+  return `<div class="head"><div><h2>Custos de ${ymLabel(MES)}</h2><p>O mapa abaixo lista os custos de um negócio como a Seille. O que ainda não foi lançado aparece em cinza. O custo de cada peça vendida, as taxas e o frete entram pelos pedidos.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-fxrapido>Preencher custos fixos</button><a class="btn" href="#leitor" style="text-decoration:none">Adicionar documentos</a></div></div>
   <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="kpi"><span class="l">Custos operacionais</span><span class="v num">${brl(total)}</span><span class="s">Fixos, variáveis, equipe e anúncios</span></div>
     <div class="kpi"><span class="l">Fixos no mês</span><span class="v num">${brl(c.fixos)}</span></div>
@@ -2072,7 +2114,7 @@ function vCustos(){
   </table></div>
   <p class="sub" style="margin:10px 0 0">Aluguel, condomínio, contas e contador costumam ser lançados como custo fixo (repete todo mês). IPTU e seguro podem ser lançados como fixo, com o valor da parcela, ou como custo do mês quando forem pagos à vista.</p>`)}
   <div class="grid2">
-    <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos fixos mensais</h3><button class="btn" data-new="fixos">Adicionar</button></div>
+    <div class="panel"><div class="head" style="margin-bottom:10px"><h3>Custos fixos mensais</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-fxrapido>Preencher todos</button><button class="btn" data-new="fixos">Adicionar</button></div></div>
       <div class="tw"><table><thead><tr><th>Descrição</th><th>Vigência</th><th class="n">Valor</th></tr></thead><tbody>
       ${fx.length ? fx.map(f=>`<tr class="click" data-edit="fixos" data-id="${f.id}" style="${fixoNoMes(f,MES)?"":"opacity:.5"}"><td>${esc(f.nome)}${exBadge(f)}<div class="sub">${esc(f.categoria||"")}</div>${docLinks(f.comprovantes?.[MES])}</td>
         <td class="sub">${f.inicio?"desde "+ymShort(f.inicio):"sempre"}${f.fim?" até "+ymShort(f.fim):""}</td><td class="n">${brl(f.valor)}</td></tr>`).join("")
@@ -3245,6 +3287,7 @@ document.addEventListener("click", e => {
     PEDLIM = 100; render(); return; }
   if(e.target.closest("[data-modo]")){ ANO = false; PER = null; PEDLIM = 100; render(); return; }
   const pdias = e.target.closest("[data-perdias]"); if(pdias){ const t = today(); PER = {de: addDays(t, 1 - +pdias.dataset.perdias), ate: t}; PEDLIM = 100; render(); return; }
+  if(e.target.closest("[data-fxrapido]")){ openPreencherFixos(); return; }
   if(e.target.closest("[data-lucrotg]")){ const v = !LUCRO(); S.db.doc("config/geral").set({...S.config, mostrarLucro: v}).then(() => { S.config.mostrarLucro = v; render(); toast(v ? "Lucro e margens visíveis" : "Lucro e margens escondidos"); }, () => toast("Não foi possível salvar")); return; }
   if(e.target.closest("[data-catrec]")){ carregaCatalogo(true); return; }
   if(e.target.closest("[data-catesc]")){ openEscolherColecoes(); return; }
