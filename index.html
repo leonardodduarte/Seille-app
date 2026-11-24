@@ -1707,10 +1707,10 @@ function vPedidos(){
     <div class="kpi"><span class="l">Frete cobrado</span><span class="v num">${brl(totFrete)}</span><span class="s">média ${brl(totFrete/nPed)} por pedido</span></div>
     <div class="kpi"><span class="l">Taxas e juros</span><span class="v num">${brl(tr - tliq)}</span><span class="s">${algumEst ? "parte estimada" : "valores da loja"} · ${tr ? pct((tr-tliq)/tr) : "—"} do total</span></div>
   </div>
-  <div class="panel"><h3>Cupons</h3><div class="tw"><table>
+  ${dobra("cuponsped", "Cupons", `${pCup.filter(([k]) => k).length} cupons`, `<div class="tw"><table>
       <thead><tr><th>Cupom</th><th class="n">Pedidos</th><th class="n">Desconto dado</th><th class="n">Faturamento</th></tr></thead>
       <tbody>${pCup.map(([k,o]) => `<tr><td>${k ? esc(k) : `<span class="sub">Sem cupom</span>`}</td><td class="n">${o.n}</td><td class="n">${brl(o.desconto)}</td><td class="n">${brl(o.receita)}</td></tr>`).join("")}</tbody>
-    </table></div></div>` : ""}
+    </table></div>`)}` : ""}
   <p class="sub">Toque num pedido para ver a conta completa. Líquido = total pago − taxas − juros.${LUCRO() ? " Sobra = líquido − custo das peças − frete pago − impostos." : ""} ${algumEst ? `Onde aparece ≈, a loja não informou taxas e juros e o app usa a estimativa de ${num(S.config.taxaGateway).toLocaleString("pt-BR")}%.` : ""}</p>`;
 }
 
