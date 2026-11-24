@@ -48,7 +48,9 @@ jobs:
         run: supabase functions deploy ler-comprovante --project-ref "$PROJECT_REF" --no-verify-jwt --yes
 
       # Regras de acesso do banco (perfis completo / só pedidos). Seguro rodar de novo.
+      # Se a chave do GitHub não tiver permissão de banco, rode supabase/acessos.sql à mão no SQL Editor do Supabase.
       - name: Aplicar regras de acesso
+        continue-on-error: true
         run: |
           jq -Rs '{query: .}' supabase/acessos.sql > /tmp/q.json
           code=$(curl -sS -o /tmp/r.txt -w "%{http_code}" -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
