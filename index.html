@@ -1452,7 +1452,13 @@ function pedidosPendentes(){
 const ORD_TAM = ["PP","P","M","G","GG","XG","EG","XGG"];
 function gradeTamanhos(gs){
   const m = {}, tams = new Set();
-  gs.forEach(g => g.ls.forEach(v => { const nome = modeloDe(v).nome; let t = String(tamanhoDe(v) || "").trim().toUpperCase(); if(!t || /^(U|UN|UNICO|ÚNICO|TAMANHO ÚNICO|TAMANHO UNICO)$/.test(t)) t = "Único";
+  gs.forEach(g => g.ls.forEach(v => {
+    // a variação pode vir "M / Off White": o tamanho vira coluna e a cor vai junto do nome da peça
+    const partes = String(tamanhoDe(v) || "").split(/\s*[\/|,]\s*/).map(x => x.trim()).filter(Boolean);
+    const ehTam = x => /^(PP|P|M|G|GG|XG|XGG|EG|EGG|U|UN|UNICO|ÚNICO|TAMANHO [ÚU]NICO|\d{2})$/i.test(x);
+    const tp = partes.find(ehTam), cor = partes.filter(x => x !== tp).join(" / ");
+    let t = (tp || "").toUpperCase(); if(!t || /^(U|UN|UNICO|ÚNICO|TAMANHO [ÚU]NICO)$/.test(t)) t = "Único";
+    const base = modeloDe(v).nome, nome = cor && !semAc(base).includes(semAc(cor)) ? `${base} · ${cor.replace(/\b\w/g, c => c.toUpperCase())}` : base;
     tams.add(t); const o = (m[nome] ||= {nome, tot: 0, t: {}, img: ""}); if(!o.img && /^https:\/\//.test(v.imagem||"")) o.img = v.imagem; o.t[t] = (o.t[t] || 0) + num(v.qtd); o.tot += num(v.qtd); }));
   const peso = t => t === "Único" ? 999 : ORD_TAM.includes(t) ? ORD_TAM.indexOf(t) : /^\d+$/.test(t) ? 100 + +t : 500;
   const cols = [...tams].sort((a,b) => peso(a) - peso(b) || a.localeCompare(b));
