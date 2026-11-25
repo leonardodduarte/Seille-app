@@ -918,7 +918,10 @@ function saudacao(){
   const ano = MES.slice(0,4);
   const fin = new Set(S.vendas.filter(v => ["Enviado","Entregue"].includes(v.status) && (v.data||"").startsWith(ano)).map(v => v.pedido || v.id)).size;
   const docs = S.entrada.filter(x => x.status === "novo").length;
-  return `<div class="hero"><h1>Olá, ${esc(e)}!</h1>${docs ? `<p><button class="btn" data-ir="leitor">${docs} ${docs===1?"documento chegou":"documentos chegaram"} por e-mail para conferir ›</button></p>` : ""}</div>${resumoRapido()}`;
+  const caiu = S.nuvem?.caiu ? (LIMITADO()
+    ? `<div class="banner warn">A ligação com a Nuvemshop caiu e os pedidos novos não estão chegando. Avise quem administra o app.</div>`
+    : `<div class="banner warn" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span><b>A ligação com a Nuvemshop caiu.</b> Os pedidos novos não estão chegando no app.</span><a class="btn pri" href="#ajustes" style="text-decoration:none">Conectar de novo</a></div>`) : "";
+  return `${caiu}<div class="hero"><h1>Olá, ${esc(e)}!</h1>${docs ? `<p><button class="btn" data-ir="leitor">${docs} ${docs===1?"documento chegou":"documentos chegaram"} por e-mail para conferir ›</button></p>` : ""}</div>${resumoRapido()}`;
 }
 // Pedidos que vieram da loja sem peça cadastrada: ao cadastrar a peça com o mesmo nome, liga e preenche o custo
 async function ligaVendas(id, p){
@@ -2558,7 +2561,7 @@ async function carregaNuvem(){
   if(nuvemCarregando || !window.seilleNuvem) return; nuvemCarregando = true;
   try{ S.nuvem = await window.seilleNuvem.chamar("status"); }
   catch(e){ S.nuvem = {erro: e?.code === "sem_funcao" ? "A função nuvemshop ainda não foi publicada no Supabase." : e?.code === "not_granted" ? ({nao_membro:"Seu e-mail não está na lista de membros (tabela membros no Supabase).", login_invalido:"A função não conseguiu confirmar seu login. Publique de novo a versão mais recente da função nuvemshop.", erro_membros:"A função não conseguiu ler a lista de membros. Publique de novo a versão mais recente da função nuvemshop."}[e.motivo] || "Sua conta não tem acesso.") : `Não foi possível consultar a ligação com a Nuvemshop${e?.status ? " (erro " + e.status + ")" : ""}.`}; }
-  nuvemCarregando = false; if(curView() === "ajustes") render();
+  nuvemCarregando = false; if(curView() === "ajustes" || S.nuvem?.caiu) render();
 }
 function painelNuvem(){
   const n = S.nuvem;
@@ -3504,6 +3507,7 @@ $("#atualizar").onclick = () => {
   }
   let forcarPl = false; try{ forcarPl = sessionStorage.getItem("forcarPlanilha") === "1"; sessionStorage.removeItem("forcarPlanilha"); }catch(_){}
   setTimeout(() => lerPlanilha(forcarPl), 1500);
+  setTimeout(() => { if(!S.nuvem) carregaNuvem(); }, 3000); // confere se a ligação com a Nuvemshop continua de pé
   setTimeout(() => { if(!S.config.detalheDescontos || !S.config.fotosPedidos || !S.config.envioPedidos || !S.config.horaPedidos) sincronizarDetalhe(); else conferirAbertos(false); }, 6000);
   setInterval(() => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); }, 60_000);
   document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && Date.now() - planilhaUlt > 10*60_000) lerPlanilha(false); });

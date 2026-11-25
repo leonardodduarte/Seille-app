@@ -55,7 +55,7 @@ const pagina = (titulo: string, texto: string, status = 200) =>
 // ---------- dados guardados da integração ----------
 type Dados = {
   store_id?: number; access_token?: string; scope?: string; conectado_em?: string; ultima_sync?: string;
-  state?: string; state_exp?: number; voltar?: string; ultimo_erro?: string;
+  state?: string; state_exp?: number; voltar?: string; ultimo_erro?: string; caiu_em?: string;
   ultima_busca?: { quando: string; desde: string; encontrados: number; importados: number; aguardando: number; cancelados: number; comTaxas?: number; campos?: string[] };
 };
 async function ler(): Promise<Dados> {
@@ -121,6 +121,17 @@ async function ns(d: Dados, caminho: string, init: RequestInit = {}) {
     ...init,
     headers: { "Authentication": `bearer ${d.access_token}`, "User-Agent": UA, "Content-Type": "application/json", ...(init.headers ?? {}) },
   });
+  // a Nuvemshop recusou a chave (app removido ou acesso revogado): marca para o app pedir para conectar de novo
+  if (r.status === 401 && d.access_token) {
+    try {
+      const atual = await ler();
+      if (atual.access_token === d.access_token && !atual.caiu_em) {
+        await salvar({ ...atual, caiu_em: new Date().toISOString(), ultimo_erro: "A Nuvemshop recusou o acesso do app. Toque em Conectar para ligar de novo." });
+        if (await primeiraVez("aviso-caiu-" + new Date().toISOString().slice(0, 10)))
+          await avisar("Nuvemshop desconectada", "Os pedidos novos não estão chegando no app. Abra Ajustes e conecte de novo.", "./#ajustes", "nuvemshop-caiu").catch(() => {});
+      }
+    } catch (e) { console.error("marcar desconexão", e); }
+  }
   return r;
 }
 
@@ -500,7 +511,7 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
   if (b.acao === "status") {
-    return json({ configurado, conectado: !!d.access_token, loja: d.store_id ?? null, conectadoEm: d.conectado_em ?? null, ultimaSync: d.ultima_sync ?? null, ultimoErro: d.ultimo_erro ?? null, ultimaBusca: d.ultima_busca ?? null });
+    return json({ configurado, conectado: !!d.access_token, caiu: !!d.caiu_em, caiuEm: d.caiu_em ?? null, loja: d.store_id ?? null, conectadoEm: d.conectado_em ?? null, ultimaSync: d.ultima_sync ?? null, ultimoErro: d.ultimo_erro ?? null, ultimaBusca: d.ultima_busca ?? null });
   }
   if (b.acao === "conectar") {
     if (!configurado) return json({ code: "nao_configurado" }, 400);
@@ -515,7 +526,7 @@ Deno.serve(async (req) => {
     try {
       const r = await sincronizar(d, desde);
       const quando = new Date().toISOString();
-      await salvar({ ...d, ultima_sync: quando, ultimo_erro: undefined, ultima_busca: { quando, desde, ...r } });
+      await salvar({ ...d, ultima_sync: quando, ultimo_erro: undefined, caiu_em: undefined, ultima_busca: { quando, desde, ...r } });
       try { await cadastrarWebhooks(d); } catch { /* segue */ }
       return json({ total: r.importados, ...r });
     } catch (e) {
